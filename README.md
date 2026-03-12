@@ -6,9 +6,9 @@ We consider the following minimization problem, noting $s$ the day-ahead price, 
 
 $$\mathcal{L}(n,g,s,r) = -ns+\text{PREN}(n-g)_+ - \text{PREP}(g-n)_+$$
 
-To start with, we use generated data and do not allow negative prices. We proceed incrementally, with the following cases.
+To start with, we use generated data and do not allow negative prices. We proceed incrementally, in the following order.
 
-- 1°) **Stochastic generation (DRO-Newsvendor)** 
+- 1°) **Stochastic generation only (DRO-Newsvendor)** 
 - 2°) **Stochastic prices** with PREP and PREN modeled as linear offsets of the day-ahead price, e.g., $\text{PREP} = s - \delta_{\text{surplus}}$ and $\text{PREN} = s + \delta_{\text{deficit}}$
 - 3°) **Stochastic imbalance prices**
 
