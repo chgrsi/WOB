@@ -1,4 +1,5 @@
 using JuMP, HiGHS, DataFrames, Distributions, Plots, LinearAlgebra, LaTeXStrings
+using FastGaussQuadrature
 
 # style setup 
 default(
@@ -14,7 +15,14 @@ default(
     margin = 5Plots.mm              
 )
 
-function solve_dro_newsvendor(g_data::Vector{Float64}, epsilon::Float64, S::Float64, PREP::Float64, PREN::Float64)
+function gaussian_quadrature(law::Normal, N::Int)  
+    x0, w0 = FastGaussQuadrature.gausshermite(N)  
+    x = (sqrt(2.0) * law.σ) .* x0 .+ law.μ  
+    w = w0 ./ sqrt(pi)  
+    return (x, w)  
+end
+
+function solve_dro_newsvendor(g_data::Vector{Float64}, w::Vector{Float64}, epsilon::Float64, S::Float64, PREP::Float64, PREN::Float64)
     N = length(g_data)
     model = Model(HiGHS.Optimizer)
     set_silent(model)
@@ -50,7 +58,7 @@ function solve_dro_newsvendor(g_data::Vector{Float64}, epsilon::Float64, S::Floa
         @constraint(model, -(C' * gamma2[i, :] - B2) <= lambda)
     end
     
-    @objective(model, Min, lambda * epsilon + sum(s) / N)
+    @objective(model, Min, lambda * epsilon + sum(w[i] * s[i] for i in 1:N))
     optimize!(model)
     
     return value(n), objective_value(model)
@@ -61,19 +69,20 @@ mu_g, sigma_g = 0.7, 0.1
 S_det, PREP_det, PREN_det = 50.0, 40.0, 60.0 
 N_samples = 1000
 law = Normal(mu_g, sigma_g)
-g_samples = clamp.(rand(law, N_samples), 0.0, 1.0)
+g_nodes_raw, g_weights = gaussian_quadrature(law, 15) 
+g_nodes = clamp.(g_nodes_raw, 0.0, 1.0)
 
 # Newsvendor theoretical baseline
 target_prob = (S_det - PREP_det) / (PREN_det - PREP_det)
 n_theory = quantile(law, target_prob)
-profit_theory = mean(S_det * n_theory .- max.(PREP_det .* (n_theory .- g_samples), PREN_det .* (n_theory .- g_samples)))
+profit_theory = mean(S_det * n_theory .- max.(PREP_det .* (n_theory .- g_nodes), PREN_det .* (n_theory .- g_nodes)))
 
 # analysis
-epsilons = 0.0:0.01:3.0
+epsilons = 0.0:0.01:1.0
 results = DataFrame(eps = Float64[], n_opt = Float64[], profit = Float64[])
 
 for eps in epsilons
-    n_opt, cost = solve_dro_newsvendor(g_samples, eps, S_det, PREP_det, PREN_det)
+    n_opt, cost = solve_dro_newsvendor(g_nodes, g_weights, eps, S_det, PREP_det, PREN_det)
     push!(results, (eps, n_opt, -cost))
 end
 
