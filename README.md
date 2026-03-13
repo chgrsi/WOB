@@ -20,5 +20,5 @@ As a second step, we enable negative prices and replace generated data with real
 
 Clone the repository:
    ```bash
-   git clone [https://github.com/charlesgarrisi/WOB.git](https://github.com/charlesgarrisi/WOB.git)
+   git clone [https://github.com/chgrsi/WOB.git](https://github.com/chgrsi/WOB.git)
    cd WOB
