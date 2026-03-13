@@ -92,5 +92,5 @@ p2 = plot(results.eps, results.n_opt, lw=2, marker=:+, legend=:topright, label="
 hline!(p1, [profit_theory], label="SAA", ls=:dash, color=:green, lw=2)
 hline!(p2, [n_theory], label="SAA", ls=:dash, color=:green, lw=2)
 
-savefig(p1, "profit_sensitivity_DRO_newsvendor.pdf")
-savefig(p2, "decision_sensitivity_DRO_newsvendor.pdf")
+savefig(p1, "profit_sensitivity_WOB_newsvendor.pdf")
+savefig(p2, "decision_sensitivity_WOB_newsvendor.pdf")
