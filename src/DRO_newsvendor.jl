@@ -15,6 +15,7 @@ default(
     margin = 5Plots.mm              
 )
 
+
 function gaussian_quadrature(law::Normal, N::Int)  
     x0, w0 = FastGaussQuadrature.gausshermite(N)  
     x = (sqrt(2.0) * law.σ) .* x0 .+ law.μ  
@@ -43,14 +44,14 @@ function solve_dro_newsvendor(g_data::Vector{Float64}, w::Vector{Float64}, epsil
         g_i = g_data[i]
         slack = d .- C .* g_i
         
-        # Surplus (n > g_i)
+        # Surplus
         loss1 = -S * n + PREP * (n - g_i)
         B1 = -PREP
         @constraint(model, loss1 + dot(gamma1[i, :], slack) <= s[i])
         @constraint(model, C' * gamma1[i, :] - B1 <= lambda)
         @constraint(model, -(C' * gamma1[i, :] - B1) <= lambda)
         
-        # Deficit (n < g_i)
+        # Deficit 
         loss2 = -S * n + PREN * (n - g_i)
         B2 = -PREN
         @constraint(model, loss2 + dot(gamma2[i, :], slack) <= s[i])
@@ -66,7 +67,7 @@ end
 
 # params
 mu_g, sigma_g = 0.7, 0.1
-S_det, PREP_det, PREN_det = 50.0, 40.0, 60.0 
+S_det, PREP_det, PREN_det = 65.0, 55.0, 75.0 
 N_samples = 1000
 law = Normal(mu_g, sigma_g)
 g_nodes_raw, g_weights = gaussian_quadrature(law, 15) 
@@ -75,7 +76,7 @@ g_nodes = clamp.(g_nodes_raw, 0.0, 1.0)
 # Newsvendor theoretical baseline
 target_prob = (S_det - PREP_det) / (PREN_det - PREP_det)
 n_theory = quantile(law, target_prob)
-profit_theory = mean(S_det * n_theory .- max.(PREP_det .* (n_theory .- g_nodes), PREN_det .* (n_theory .- g_nodes)))
+profit_theory = sum(g_weights .* (S_det * n_theory .- max.(PREP_det .* (n_theory .- g_nodes), PREN_det .* (n_theory .- g_nodes))))
 
 # analysis
 epsilons = 0.0:0.01:1.0
