@@ -71,13 +71,15 @@ end
 
 # params
 N_samples = 1000
+mu_g, sigma_g = 0.7, 0.1
+mu_S, tau_S = 65.0, 25.0
 delta_surplus = 10.0
 delta_deficit = 5.0
 S_max = 400.0
 epsilons = 0.0:0.01:1.0 
 
-law_g = Normal(0.7, 0.1)
-law_S = LocationScale(65.0, 25.0, TDist(3))
+law_g = Normal(mu_g, sigma_g)
+law_S = LocationScale(mu_S, tau_S, TDist(3))
 
 # base unbounded samples 
 g_base = clamp.(rand(law_g, N_samples), 0.0, 1.0)
