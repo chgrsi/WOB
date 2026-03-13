@@ -11,7 +11,7 @@ $$\mathcal{L}(n,g,s,r) = -n\cdot s+\text{PREN}\cdot(n-g)^+ - \text{PREP}\cdot(g-
 To start with, we use generated data and do not allow negative prices. We proceed incrementally, in the following order.
 
 - 1°) **Stochastic generation only** $\leadsto$ DRO_newsvendor.jl
-- 2°) **Stochastic day-ahead prices** with PREP and PREN modeled as linear offsets of the day-ahead price, e.g., $\text{PREP} = s - \delta_{\text{surplus}}$ and $\text{PREN} = s + \delta_{\text{deficit}}$
+- 2°) **Stochastic day-ahead prices** with PREP and PREN modeled as linear offsets of the day-ahead price, e.g., $\text{PREP} = s - \delta_{\text{surplus}}$ and $\text{PREN} = s + \delta_{\text{deficit}}$ $\leadsto$ DRO_stochastic_prices.jl
 - 3°) **Stochastic imbalance prices** modeled independently to capture asymmetric market dynamics
 
 As a second step, we enable negative prices and replace generated data with real-world data.
