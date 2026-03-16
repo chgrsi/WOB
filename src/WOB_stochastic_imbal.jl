@@ -20,13 +20,12 @@ default(
     margin = 5Plots.mm              
 )
 
-function solve_dro_4D(g_data::Vector{Float64}, S_data::Vector{Float64},
+function solve_dro_4D(g_data::Vector{Float64}, S_data::Vector{Float64}, 
     PREP_data::Vector{Float64}, PREN_data::Vector{Float64},
     epsilon::Float64, 
     S_min::Float64, S_max::Float64,
     PREP_min::Float64, PREP_max::Float64,
     PREN_min::Float64, PREN_max::Float64)
-  
     N = length(g_data)
     model = Model(HiGHS.Optimizer)
     set_silent(model)
@@ -41,7 +40,7 @@ function solve_dro_4D(g_data::Vector{Float64}, S_data::Vector{Float64},
          0.0 0.0 0.0 1.0;
          0.0 0.0 0.0 -1.0;
         ]
-    d = [1.0, 0.0, S_max, -S_min, PREP_max, -PREP_min, PREN_max, -PREN_min]
+        d = [1.0, 0.0, S_max, -S_min, PREP_max, -PREP_min, PREN_max, -PREN_min]
     
     # scaling
     W_weights = [1.0, 1.0 / (S_max - S_min), 1.0 / (PREP_max - PREP_min), 1.0 / (PREN_max - PREN_min)] 
@@ -97,23 +96,31 @@ law_S = LocationScale(mu_S, tau_S, TDist(3))
 g_base = clamp.(rand(law_g, N_samples), 0.0, 1.0)
 S_base = rand(law_S, N_samples)
 
+penalty_regimes = MixtureModel([Normal(5.0, 2.0), Normal(100.0, 50.0)], [0.8, 0.2])
+surplus_penalty_samples = rand(penalty_regimes, N_samples)
+deficit_penalty_samples = rand(penalty_regimes, N_samples)
+
 # no negative prices allowed
 S_min_pos = 0.0
 g_samples_pos = copy(g_base)
 S_samples_pos = clamp.(S_base, S_min_pos, S_max)
 
-penalty_regimes = MixtureModel([Normal(5.0, 2.0), Normal(100.0, 50.0)], [0.8, 0.2])
-surplus_penalty_samples = rand(penalty_regimes, N_samples)
-deficit_penalty_samples = rand(penalty_regimes, N_samples)
 PREP_samples_pos = clamp.(S_samples_pos .- surplus_penalty_samples, PREP_min, PREP_max)
 PREN_samples_pos = clamp.(S_samples_pos .+ deficit_penalty_samples, PREN_min, PREN_max)
 
-profit_theory_pos = sum(
-    S_samples_pos[i] * mu_g - max(
-        PREP_samples_pos[i] * (mu_g - g_samples_pos[i]), 
-        PREN_samples_pos[i] * (mu_g - g_samples_pos[i])
-    ) for i in 1:N_samples
-) / N_samples
+mean_S_pos = mean(S_samples_pos)
+mean_PREP_pos = mean(PREP_samples_pos)
+mean_PREN_pos = mean(PREN_samples_pos)
+
+target_prob_pos = (mean_S_pos - mean_PREP_pos) / (mean_PREN_pos - mean_PREP_pos)
+n_theory_pos = quantile(law_g, target_prob_pos)
+
+profit_theory_pos = mean(
+    S_samples_pos .* n_theory_pos .- max.(
+        PREP_samples_pos .* (n_theory_pos .- g_samples_pos), 
+        PREN_samples_pos .* (n_theory_pos .- g_samples_pos)
+    )
+)
 
 results_pos = DataFrame(eps = Float64[], n_opt = Float64[], profit = Float64[])
 for eps in epsilons
@@ -129,12 +136,19 @@ S_samples_neg = clamp.(S_base, S_min_neg, S_max)
 PREP_samples_neg = clamp.(S_samples_neg .- surplus_penalty_samples, PREP_min, PREP_max)
 PREN_samples_neg = clamp.(S_samples_neg .+ deficit_penalty_samples, PREN_min, PREN_max)
 
-profit_theory_neg = sum(
-    S_samples_neg[i] * 0.7 - max(
-        PREP_samples_neg[i] * (mu_g - g_samples_neg[i]), 
-        PREN_samples_neg[i] * (mu_g - g_samples_neg[i])
-    ) for i in 1:N_samples
-) / N_samples
+mean_S_neg = mean(S_samples_neg)
+mean_PREP_neg = mean(PREP_samples_neg)
+mean_PREN_neg = mean(PREN_samples_neg)
+
+target_prob_neg = (mean_S_neg - mean_PREP_neg) / (mean_PREN_neg - mean_PREP_neg)
+n_theory_neg = quantile(law_g, target_prob_neg)
+
+profit_theory_neg = mean(
+    S_samples_neg .* n_theory_neg .- max.(
+        PREP_samples_neg .* (n_theory_neg .- g_samples_neg), 
+        PREN_samples_neg .* (n_theory_neg .- g_samples_neg)
+    )
+)
 
 results_neg = DataFrame(eps = Float64[], n_opt = Float64[], profit = Float64[])
 for eps in epsilons
