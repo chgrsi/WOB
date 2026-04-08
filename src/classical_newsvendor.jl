@@ -56,6 +56,18 @@ function solve_empirical_saa(g_train, s, delta, tau)
     return value(n), objective_value(model)
 end
 
+function solve_ro_closed(s, delta, tau)
+    c_plus = (s + delta) * tau - delta
+    c_minus = (s + delta) * tau + delta
+    
+    n_raw = (c_plus - s) / (c_plus + c_minus)
+    n_opt = clamp(n_raw, 0.0, 1.0)
+    
+    wc_loss = max(c_minus * n_opt, c_plus - s - c_plus * n_opt)
+    
+    return n_opt, -wc_loss
+end
+
 function solve_ro(s, delta, tau)
     model = Model(HiGHS.Optimizer)
     set_silent(model)
@@ -168,7 +180,7 @@ saa_profit_oos = zeros(N_sims)
 saa_n_opt = zeros(N_sims)
 
 # RO baseline
-ro_n, _ = solve_ro(s_val, delta_val, tau_val)
+ro_n, _ = solve_ro_closed(s_val, delta_val, tau_val)
 ro_profit_oos = compute_oos_profit(ro_n, g_oos, s_val, delta_val, tau_val)
 
 println("Starting $N_sims simulations with N_train=$N_train")
