@@ -64,7 +64,8 @@ function solve_ro(s, delta, tau)
     
     @variables(model, begin 
         0 <= n <= 1 
-        wc_loss; gamma1[1:2] >= 0
+        wc_loss
+        gamma1[1:2] >= 0
         gamma2[1:2] >= 0 
     end)
     
