@@ -13,7 +13,14 @@ julia run_experiments.jl
 # Run specific sample size
 julia run_experiments.jl 30
 ```
-By default, outputs are saved as CSV to results/raw/. You can then compile the results into PDF plots, saved at plots/high_var/.
+By default, outputs are saved as CSV to results/raw/. 
+
+You can then compile the results into PDF plots, using the following command line.
+```
+# Make plots
+julia make_plots
+```
+Plots are saved at plots/raw/.
 
 ### Sensitivity analysis
 
