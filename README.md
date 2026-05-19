@@ -20,7 +20,7 @@ You can then compile the results into PDF plots, using the following command lin
 # Make plots
 julia make_plots.jl
 ```
-Plots are saved at plots/raw/.
+By default, plots are saved at plots/raw/.
 
 ### Sensitivity analysis
 
