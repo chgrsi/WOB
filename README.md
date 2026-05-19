@@ -30,7 +30,6 @@ Modify the CONFIG in run_experiments.jl to test specific hypotheses, e.g.,
 - wide bounds: ```s_max = 2000.0, d_min = -5000.0, d_max = 5000.0```
 - tight bounds: ```s_max = 200.0, d_min = -200.0, d_max = 200.0```
 - asymmetric scaling: ```W_mult = (g = 10.0, s = 1.0, d = 1.0)```
-- uniform scaling (cheaper peanalty): ```W_mult = (g = 0.1, s = 0.1, d = 0.1)```
+- uniform scaling (cheaper penalty): ```W_mult = (g = 0.1, s = 0.1, d = 0.1)```
 
-
-
+Be careful to change the output directory name as well!
