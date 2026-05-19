@@ -18,7 +18,7 @@ By default, outputs are saved as CSV to results/raw/.
 You can then compile the results into PDF plots, using the following command line.
 ```
 # Make plots
-julia make_plots
+julia make_plots.jl
 ```
 Plots are saved at plots/raw/.
 
