@@ -86,7 +86,7 @@ function generate_plots()
         savefig(p1, "plots/raw/profit_N_$(N_train).pdf")
         savefig(p2, "plots/raw/decision_N_$(N_train).pdf")
         savefig(p3, "plots/raw/cvar_N_$(N_train).pdf")
-        savefig(p4, "plots/wide_bounds/lambda_N_$(N_train).pdf")
+        savefig(p4, "plots/raw/lambda_N_$(N_train).pdf")
         println("Generated plots for N_train = $N_train")
     end
 end
