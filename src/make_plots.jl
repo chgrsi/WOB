@@ -45,6 +45,10 @@ function generate_plots()
         p3 = plot(xscale=:log10, xticks=my_xticks, xminorgrid=true, minorgridalpha=0.15, 
                   xlabel=L"Radius $\epsilon$", ylabel="5% Tail Risk [EUR/MWh]", legend=:topleft)
 
+        # lambda
+        p4 = plot(xscale=:log10, yscale=:log10, xticks=my_xticks, xminorgrid=true, 
+          xlabel=L"Radius $\epsilon$", ylabel=L"Dual variable $\lambda$", legend=:topright)
+
         for scen in unique(df.Scenario)
             for meth in unique(df.Method)
                 sub = filter(r -> r.Scenario == scen && r.Method == meth, df)
@@ -62,6 +66,8 @@ function generate_plots()
                 plot!(p2, sub.Epsilon, sub.N_opt, color=col, lw=line_width, label=lbl)
                 # CVaR
                 plot!(p3, sub.Epsilon, sub.CVaR5, color=col, lw=line_width, label=lbl)
+                # lambda
+                plot!(p4, sub.Epsilon, max.(sub.Lambda, 1e-8), color=col, lw=line_width, label="$meth ($scen)")
             end
             
             sub_b = filter(r -> r.Scenario == scen && r.Method == "exact", df)
@@ -80,6 +86,7 @@ function generate_plots()
         savefig(p1, "plots/raw/profit_N_$(N_train).pdf")
         savefig(p2, "plots/raw/decision_N_$(N_train).pdf")
         savefig(p3, "plots/raw/cvar_N_$(N_train).pdf")
+        savefig(p4, "plots/wide_bounds/lambda_N_$(N_train).pdf")
         println("Generated plots for N_train = $N_train")
     end
 end
