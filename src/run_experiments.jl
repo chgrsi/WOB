@@ -52,17 +52,17 @@ function build_support_set(s_min)
     return C, d
 end
 
-function solve_saa(g_tr, s_tr, d_tr)
+function solve_saa(g_train, s_train, d_train)
     m = Model(HiGHS.Optimizer); set_silent(m)
-    N = length(g_tr)
+    N = length(g_train)
     @variables(m, begin 
         0 <= n <= 1
         loss[1:N] 
     end)
     for i in 1:N
-        cp, cm = (s_tr[i]+d_tr[i])*tau_val - d_tr[i], (s_tr[i]+d_tr[i])*tau_val + d_tr[i]
-        @constraint(m, loss[i] >= -g_tr[i]*s_tr[i] + cp*(g_tr[i] - n))
-        @constraint(m, loss[i] >= -g_tr[i]*s_tr[i] + cm*(n - g_tr[i]))
+        cp, cm = (s_train[i]+d_train[i])*tau_val - d_train[i], (s_train[i]+d_train[i])*tau_val + d_train[i]
+        @constraint(m, loss[i] >= -g_train[i]*s_train[i] + cp*(g_train[i] - n))
+        @constraint(m, loss[i] >= -g_train[i]*s_train[i] + cm*(n - g_train[i]))
     end
     @objective(m, Min, sum(loss)/N); optimize!(m); return value(n)
 end
@@ -89,8 +89,8 @@ function solve_ro(s_min)
     return value(n)
 end
 
-function solve_dro_exact(g_tr, s_tr, d_tr, s_min, W)
-    N = length(g_tr)
+function solve_dro_exact(g_train, s_train, d_train, s_min, W)
+    N = length(g_train)
     m = Model(() -> Gurobi.Optimizer(GRB_ENV)); set_silent(m)
     @variables(m, begin 
         0 <= n <= 1
@@ -98,27 +98,28 @@ function solve_dro_exact(g_tr, s_tr, d_tr, s_min, W)
         epi[1:N] 
     end)
     for i in 1:N
-        for g_k in [0.0, g_tr[i], 1.0], s_k in [s_min, s_tr[i], CONFIG.Xi.s_max], d_k in [CONFIG.Xi.d_min, d_tr[i], CONFIG.Xi.d_max]
-            dist = W[1]*abs(g_k-g_tr[i]) + W[2]*abs(s_k-s_tr[i]) + W[3]*abs(d_k-d_tr[i])
+        for g_k in [0.0, g_train[i], 1.0], s_k in [s_min, s_train[i], CONFIG.Xi.s_max], d_k in [CONFIG.Xi.d_min, d_train[i], CONFIG.Xi.d_max]
+            dist = W[1]*abs(g_k-g_train[i]) + W[2]*abs(s_k-s_train[i]) + W[3]*abs(d_k-d_train[i])
             cp, cm = (s_k+d_k)*tau_val - d_k, (s_k+d_k)*tau_val + d_k
             @constraint(m, epi[i] >= -g_k*s_k + cp*(g_k - n) - lam*dist)
             @constraint(m, epi[i] >= -g_k*s_k + cm*(n - g_k) - lam*dist)
         end
     end
 
-    n_opts, prof_is = Float64[], Float64[]
+    n_opts, prof_is, lam_opts = Float64[], Float64[], Float64[]
 
     for eps in CONFIG.epsilons
         @objective(m, Min, lam*eps + sum(epi)/N)
         optimize!(m)
         push!(n_opts, value(n))
         push!(prof_is, -objective_value(m))
+        push!(lam_opts, value(lam))
     end
-    return n_opts, prof_is
+    return n_opts, prof_is, lam_opts
 end
 
-function solve_dro_approx(g_tr, s_tr, d_tr, s_min, W)
-    N = length(g_tr)
+function solve_dro_approx(g_train, s_train, d_train, s_min, W)
+    N = length(g_train)
     m = Model(HiGHS.Optimizer); set_silent(m)
     C, d = build_support_set(s_min)
     @variables(m, begin 
@@ -133,28 +134,30 @@ function solve_dro_approx(g_tr, s_tr, d_tr, s_min, W)
     B2 = [0.0, tau_val*n, (1.0+tau_val)*n, -(1.0+tau_val), -(1.0+tau_val)]
 
     for i in 1:N
-        slack = d .- C * [g_tr[i], s_tr[i], d_tr[i], g_tr[i]*s_tr[i], g_tr[i]*d_tr[i]]
-        cp, cm = (s_tr[i]+d_tr[i])*tau_val - d_tr[i], (s_tr[i]+d_tr[i])*tau_val + d_tr[i]
-        @constraint(m, -g_tr[i]*s_tr[i] + cp*(g_tr[i]-n) + dot(g1[i,:], slack) <= epi[i])
+        slack = d .- C * [g_train[i], s_train[i], d_train[i], g_train[i]*s_train[i], g_train[i]*d_train[i]]
+        cp, cm = (s_train[i]+d_train[i])*tau_val - d_train[i], (s_train[i]+d_train[i])*tau_val + d_train[i]
+        @constraint(m, -g_train[i]*s_tr[i] + cp*(g_train[i]-n) + dot(g1[i,:], slack) <= epi[i])
         @constraint(m, C'*g1[i,:] .- B1 .<= lam .* W)
         @constraint(m, -(C'*g1[i,:] .- B1) .<= lam .* W)
-        @constraint(m, -g_tr[i]*s_tr[i] + cm*(n-g_tr[i]) + dot(g2[i,:], slack) <= epi[i])
+        @constraint(m, -g_train[i]*s_train[i] + cm*(n-g_train[i]) + dot(g2[i,:], slack) <= epi[i])
         @constraint(m, C'*g2[i,:] .- B2 .<= lam .* W)
         @constraint(m, -(C'*g2[i,:] .- B2) .<= lam .* W)
     end
-    n_opts, prof_is = Float64[], Float64[]
+    n_opts, prof_is, lam_opts = Float64[], Float64[], Float64[]
     for eps in CONFIG.epsilons
         @objective(m, Min, lam*eps + sum(epi)/N)
         optimize!(m)
         push!(n_opts, value(n))
         push!(prof_is, -objective_value(m))
+        push!(lam_opts, value(lam))
     end
-    return n_opts, prof_is
+    return n_opts, prof_is, lam_opts
 end
 
 function run_experiments()
     Random.seed!(42)
     mkpath("results/raw")
+    N_eps = length(CONFIG.epsilons)
     law_s = LocationScale(90.0, 35.0, TDist(3))
     law_d = MixtureModel([Normal(CONFIG.GMM.mu1, CONFIG.GMM.sig1), Normal(CONFIG.GMM.mu2, CONFIG.GMM.sig2)], [CONFIG.GMM.w1, CONFIG.GMM.w2])
     law_f, law_zeta = truncated(Normal(0.7, 0.2), 0.0, 1.0), Normal(0.0, 0.15)
@@ -171,56 +174,77 @@ function run_experiments()
             s_oos = clamp.(s_oos_b, scen.s_min, CONFIG.Xi.s_max)
             d_oos = clamp.(d_oos_b, CONFIG.Xi.d_min, CONFIG.Xi.d_max)
             n_ro = solve_ro(scen.s_min)
-            ro_met = compute_oos_metrics(n_ro, g_oos, s_oos, d_oos)
+            ro_metrics = compute_oos_metrics(n_ro, g_oos, s_oos, d_oos)
 
-            saa_n, saa_mets = zeros(CONFIG.N_sims), zeros(CONFIG.N_sims, 2)
-            ex_n, ex_is, ex_mets = zeros(CONFIG.N_sims, 100), zeros(CONFIG.N_sims, 100), zeros(CONFIG.N_sims, 100, 2)
-            ap_n, ap_is, ap_mets = zeros(CONFIG.N_sims, 100), zeros(CONFIG.N_sims, 100), zeros(CONFIG.N_sims, 100, 2)
+            saa_n, saa_metrics = zeros(CONFIG.N_sims), zeros(CONFIG.N_sims, 2)
+            n_exact, insample_exact, metrics_exact, lam_exact = zeros(CONFIG.N_sims, N_eps), zeros(CONFIG.N_sims, N_eps), zeros(CONFIG.N_sims, N_eps, 2), zeros(CONFIG.N_sims, N_eps)
+            n_approx, insample_approx, metrics_approx, lam_approx = zeros(CONFIG.N_sims, N_eps), zeros(CONFIG.N_sims, N_eps), zeros(CONFIG.N_sims, N_eps, 2), zeros(CONFIG.N_sims, N_eps)
 
             for sim in 1:CONFIG.N_sims
-                g_tr = clamp.((1.0 .+ rand(law_zeta, N_train)) .* rand(law_f, N_train), 0.0, 1.0)
-                s_tr = clamp.(rand(law_s, N_train), scen.s_min, CONFIG.Xi.s_max)
-                d_tr = clamp.(rand(law_d, N_train), CONFIG.Xi.d_min, CONFIG.Xi.d_max)
+                g_train = clamp.((1.0 .+ rand(law_zeta, N_train)) .* rand(law_f, N_train), 0.0, 1.0)
+                s_train = clamp.(rand(law_s, N_train), scen.s_min, CONFIG.Xi.s_max)
+                d_train = clamp.(rand(law_d, N_train), CONFIG.Xi.d_min, CONFIG.Xi.d_max)
 
                 # exact
-                W_ex = [CONFIG.W_mult.g / max(std(g_tr), 1e-6), 
-                        CONFIG.W_mult.s / max(std(s_tr), 1e-6), 
-                        CONFIG.W_mult.d / max(std(d_tr), 1e-6)]
+                W_ex = [CONFIG.W_mult.g / max(std(g_train), 1e-6), 
+                        CONFIG.W_mult.s / max(std(s_train), 1e-6), 
+                        CONFIG.W_mult.d / max(std(d_train), 1e-6)]
                 
                 # approx
                 W_ap = [W_ex..., 
-                        1.0 / max(std(g_tr .* s_tr), 1e-6), 
-                        1.0 / max(std(g_tr .* d_tr), 1e-6)]
+                        1.0 / max(std(g_train .* s_train), 1e-6), 
+                        1.0 / max(std(g_train .* d_train), 1e-6)]
 
-                saa_n[sim] = solve_saa(g_tr, s_tr, d_tr)
-                s_met = compute_oos_metrics(saa_n[sim], g_oos, s_oos, d_oos)
-                saa_mets[sim, :] .= [s_met.mean, s_met.cvar5]
+                saa_n[sim] = solve_saa(g_train, s_train, d_train)
+                s_metrics = compute_oos_metrics(saa_n[sim], g_oos, s_oos, d_oos)
+                saa_metrics[sim, :] .= [s_metrics.mean, s_metrics.cvar5]
 
-                ex_n[sim, :], ex_is[sim, :] = solve_dro_exact(g_tr, s_tr, d_tr, scen.s_min, W_ex)
-                ap_n[sim, :], ap_is[sim, :] = solve_dro_approx(g_tr, s_tr, d_tr, scen.s_min, W_ap)
+                n_exact[sim, :], insample_exact[sim, :], lam_exact[sim, :] = solve_dro_exact(g_train, s_train, d_train, scen.s_min, W_ex)
+                n_approx[sim, :], insample_approx[sim, :], lam_approx[sim, :] = solve_dro_approx(g_train, s_train, d_train, scen.s_min, W_ap)
 
-                for j in 1:100
-                    me = compute_oos_metrics(ex_n[sim, j], g_oos, s_oos, d_oos)
-                    ma = compute_oos_metrics(ap_n[sim, j], g_oos, s_oos, d_oos)
-                    ex_mets[sim, j, :] .= [me.mean, me.cvar5]
-                    ap_mets[sim, j, :] .= [ma.mean, ma.cvar5]
+                for j in 1:N_eps
+                    me = compute_oos_metrics(n_exact[sim, j], g_oos, s_oos, d_oos)
+                    ma = compute_oos_metrics(n_approx[sim, j], g_oos, s_oos, d_oos)
+                    metrics_exact[sim, j, :] .= [me.mean, me.cvar5]
+                    metrics_approx[sim, j, :] .= [ma.mean, ma.cvar5]
                 end
             end
 
             for (j, eps) in enumerate(CONFIG.epsilons)
                 push!(results, Dict(
-                    :Scenario => scen.name, :Epsilon => eps, :Method => "exact", :N_opt => mean(ex_n[:, j]), 
-                    :Profit_Mean => mean(ex_mets[:, j, 1]), :Reliability => mean(ex_mets[:, j, 1] .>= ex_is[:, j]),
-                    :Profit_Q20 => quantile(ex_mets[:, j, 1], 0.20), :Profit_Q80 => quantile(ex_mets[:, j, 1], 0.80),
-                    :CVaR5 => mean(ex_mets[:, j, 2]), :SAA_Profit => mean(saa_mets[:, 1]), :RO_Profit => ro_met.mean,
-                    :SAA_N => mean(saa_n), :RO_N => n_ro, :SAA_CVaR => mean(saa_mets[:, 2]), :RO_CVaR => ro_met.cvar5
+                    :Scenario => scen.name, 
+                    :Epsilon => eps, 
+                    :Method => "exact", 
+                    :N_opt => mean(metrics_exact[:, j]), 
+                    :Profit_Mean => mean(metrics_exact[:, j, 1]), 
+                    :Reliability => mean(metrics_exact[:, j, 1] .>= insample_exact[:, j]),
+                    :Profit_Q20 => quantile(metrics_exact[:, j, 1], 0.20), 
+                    :Profit_Q80 => quantile(metrics_exact[:, j, 1], 0.80),
+                    :CVaR5 => mean(metrics_exact[:, j, 2]), 
+                    :SAA_Profit => mean(saa_metrics[:, 1]), 
+                    :RO_Profit => ro_metrics.mean,
+                    :SAA_N => mean(saa_n), 
+                    :RO_N => n_ro, 
+                    :SAA_CVaR => mean(saa_metrics[:, 2]), 
+                    :RO_CVaR => ro_metrics.cvar5,
+                    :Lambda => mean(lam_exact[:, j])
                 ))
                 push!(results, Dict(
-                    :Scenario => scen.name, :Epsilon => eps, :Method => "approx", :N_opt => mean(ap_n[:, j]), 
-                    :Profit_Mean => mean(ap_mets[:, j, 1]), :Reliability => mean(ap_mets[:, j, 1] .>= ap_is[:, j]),
-                    :Profit_Q20 => quantile(ap_mets[:, j, 1], 0.20), :Profit_Q80 => quantile(ap_mets[:, j, 1], 0.80),
-                    :CVaR5 => mean(ap_mets[:, j, 2]), :SAA_Profit => mean(saa_mets[:, 1]), :RO_Profit => ro_met.mean,
-                    :SAA_N => mean(saa_n), :RO_N => n_ro, :SAA_CVaR => mean(saa_mets[:, 2]), :RO_CVaR => ro_met.cvar5
+                    :Scenario => scen.name, 
+                    :Epsilon => eps, 
+                    :Method => "approx", 
+                    :N_opt => mean(n_approx[:, j]), 
+                    :Profit_Mean => mean(metrics_approx[:, j, 1]), 
+                    :Reliability => mean(metrics_approx[:, j, 1] .>= insample_approx[:, j]),
+                    :Profit_Q20 => quantile(metrics_approx[:, j, 1], 0.20), 
+                    :Profit_Q80 => quantile(metrics_approx[:, j, 1], 0.80),
+                    :CVaR5 => mean(metrics_approx[:, j, 2]), 
+                    :SAA_Profit => mean(saa_metrics[:, 1]), 
+                    :RO_Profit => ro_metrics.mean,
+                    :SAA_N => mean(saa_n), :RO_N => n_ro, 
+                    :SAA_CVaR => mean(saa_metrics[:, 2]), 
+                    :RO_CVaR => ro_metrics.cvar5, 
+                    :Lambda => mean(lam_approx[:, j])
                 ))
             end
         end
