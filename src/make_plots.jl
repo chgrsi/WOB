@@ -10,15 +10,16 @@ default(
 )
 
 function generate_plots()
-    mkpath("plots")
-    files = filter(f -> endswith(f, ".csv"), readdir("results/raw", join=true))
-    mkpath("plots/raw")
+    results_dir = "results/raw"
+    plots_dir = "plots/raw"
+    mkpath(plots_dir)
+    files = filter(f -> endswith(f, ".csv"), readdir(results_dir, join = true))
 
     colors = Dict(
-        ("pos", "exact")  => :dodgerblue,
-        ("neg", "exact")  => :indianred1,
-        ("pos", "approx") => :forestgreen,
-        ("neg", "approx") => :darkorange
+        ("pos", "approx-mccormick") => :forestgreen,
+        ("neg", "approx-mccormick") => :indianred1,
+        ("pos", "approx-box") => :dodgerblue,
+        ("neg", "approx-box") => :darkorange,
     )
     
     line_width = 3
@@ -49,9 +50,10 @@ function generate_plots()
         p4 = plot(xscale=:log10, yscale=:log10, xticks=my_xticks, xminorgrid=true, 
           xlabel=L"Radius $\epsilon$", ylabel=L"Dual variable $\lambda$", legend=:topright)
 
-        for scen in unique(df.Scenario)
-            for meth in unique(df.Method)
+        for scen in ["pos", "neg"]
+            for meth in ["approx-mccormick", "approx-box"]
                 sub = filter(r -> r.Scenario == scen && r.Method == meth, df)
+                sort!(sub, :Epsilon)
                 lbl = "$meth ($scen)"
                 col = colors[(scen, meth)]
 
@@ -70,8 +72,8 @@ function generate_plots()
                 plot!(p4, sub.Epsilon, max.(sub.Lambda, 1e-8), color=col, lw=line_width, label="$meth ($scen)")
             end
             
-            sub_b = filter(r -> r.Scenario == scen && r.Method == "exact", df)
-            base_col = colors[(scen, "exact")]
+            sub_b = filter(r -> r.Scenario == scen && r.Method == "approx-mccormick", df)
+            base_col = colors[(scen, "approx-mccormick")]
             
             hline!(p1, [sub_b.SAA_Profit[1]], color=base_col, ls=:dash, lw=line_width, label="SAA ($scen)")
             hline!(p1, [sub_b.RO_Profit[1]], color=base_col, ls=:dot, lw=line_width, label="RO ($scen)")
@@ -83,10 +85,10 @@ function generate_plots()
             hline!(p3, [sub_b.RO_CVaR[1]], color=base_col, ls=:dot, lw=line_width, label="RO ($scen)")
         end
 
-        savefig(p1, "plots/raw/profit_N_$(N_train).pdf")
-        savefig(p2, "plots/raw/decision_N_$(N_train).pdf")
-        savefig(p3, "plots/raw/cvar_N_$(N_train).pdf")
-        savefig(p4, "plots/raw/lambda_N_$(N_train).pdf")
+        savefig(p1, joinpath(plots_dir, "profit_N_$(N_train).pdf"))
+        savefig(p2, joinpath(plots_dir, "decision_N_$(N_train).pdf"))
+        savefig(p3, joinpath(plots_dir, "cvar_N_$(N_train).pdf"))
+        savefig(p4, joinpath(plots_dir, "lambda_N_$(N_train).pdf"))
         println("Generated plots for N_train = $N_train")
     end
 end
