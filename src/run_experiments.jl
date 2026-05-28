@@ -17,9 +17,9 @@ const CONFIG = (
     N_oos = 100_000,
     epsilons = 10 .^ range(-4, stop=4, length=100),
     k_val = 1.2,
-    Xi = (s_max = 500.0, d_min = -1000.0, d_max = 1000.0),
+    Xi = (s_min = 0.0, s_max = 500.0, d_min = -1000.0, d_max = 1000.0),
     GMM = (mu1 = -20.0, sig1 = 50.0, w1 = 0.95, mu2 = 1000.0, sig2 = 1.0, w2 = 0.05),
-    W_mult = (g = 1.0, s = 1.0, d = 1.0) 
+    W_mult = (g = 1.0, s = 1.0, d = 1.0)
 )
 const tau_val = (CONFIG.k_val - 1.0) / (CONFIG.k_val + 1.0)
 
@@ -27,7 +27,7 @@ function compute_oos_metrics(n, g, s, delta)
     cp, cm = (s .+ delta) .* tau_val .- delta, (s .+ delta) .* tau_val .+ delta
     profits = sort!((g .* s) .- cp .* max.(g .- n, 0.0) .- cm .* max.(n .- g, 0.0))
     idx_5 = max(1, round(Int, 0.05 * length(profits)))
-    return (mean = mean(profits), cvar5 = mean(view(profits, 1:idx_5)))
+    return (mean = mean(profits), cvar5 = mean(view(profits, 1:idx_5)), profits=profits)
 end
 
 function product_bounds(xL, xU, yL, yU)
@@ -35,8 +35,8 @@ function product_bounds(xL, xU, yL, yU)
     return minimum(vals), maximum(vals)
 end
 
-function build_mccormick_support(s_min)
-    s_max, d_min, d_max = CONFIG.Xi.s_max, CONFIG.Xi.d_min, CONFIG.Xi.d_max
+function build_mccormick_support(Xi)
+    s_min, s_max, d_min, d_max = Xi.s_min, Xi.s_max, Xi.d_min, Xi.d_max
     C = [
          1.0    0.0   0.0   0.0   0.0;
         -1.0    0.0   0.0   0.0   0.0;
@@ -49,18 +49,19 @@ function build_mccormick_support(s_min)
         -s_min -1.0   0.0   1.0   0.0;
         -s_max  0.0   0.0   1.0   0.0;
          d_min  0.0   0.0   0.0  -1.0;
-         d_max  0.0   1.0   0.0  -1.0; 
-        -d_min  0.0  -1.0   0.0   1.0; 
+         d_max  0.0   1.0   0.0  -1.0;
+        -d_min  0.0  -1.0   0.0   1.0;
         -d_max  0.0   0.0   0.0   1.0
     ]
     d = [1.0, 0.0, s_max, -s_min, d_max, -d_min, 0.0, s_max, -s_min, 0.0, 0.0, d_max, -d_min, 0.0]
     return C, d
 end
 
-function build_box_support(s_min)
-    s_max = CONFIG.Xi.s_max
-    d_min = CONFIG.Xi.d_min
-    d_max = CONFIG.Xi.d_max
+function build_box_support(Xi)
+    s_min = Xi.s_min
+    s_max = Xi.s_max
+    d_min = Xi.d_min
+    d_max = Xi.d_max
     gL, gU = 0.0, 1.0
     sL, sU = s_min, s_max
     dL, dU = d_min, d_max
@@ -91,9 +92,9 @@ end
 function solve_saa(g_train, s_train, d_train)
     m = Model(HiGHS.Optimizer); set_silent(m)
     N = length(g_train)
-    @variables(m, begin 
+    @variables(m, begin
         0 <= n <= 1
-        loss[1:N] 
+        loss[1:N]
     end)
     for i in 1:N
         cp, cm = (s_train[i]+d_train[i])*tau_val - d_train[i], (s_train[i]+d_train[i])*tau_val + d_train[i]
@@ -105,14 +106,14 @@ function solve_saa(g_train, s_train, d_train)
     return value(n)
 end
 
-function solve_ro(s_min)
+function solve_ro(Xi)
     m = Model(HiGHS.Optimizer); set_silent(m)
-    C, d = build_mccormick_support(s_min)
-    @variables(m, begin 
+    C, d = build_mccormick_support(Xi)
+    @variables(m, begin
         0 <= n <= 1
         wc
         g1[1:14] >= 0
-        g2[1:14] >= 0 
+        g2[1:14] >= 0
     end)
 
     B1 = [0.0, -tau_val*n, (1.0-tau_val)*n, tau_val-1.0, tau_val-1.0]
@@ -127,16 +128,17 @@ function solve_ro(s_min)
     return value(n)
 end
 
-function solve_dro_exact(g_train, s_train, d_train, s_min, W)
+function solve_dro_exact(g_train, s_train, d_train, Xi, W, eps)
     N = length(g_train)
-    m = Model(() -> Gurobi.Optimizer(GRB_ENV)); set_silent(m)
-    @variables(m, begin 
+    m = Model(HiGHS.Optimizer)
+    set_silent(m)
+    @variables(m, begin
         0 <= n <= 1
         lam >= 0
-        epi[1:N] 
+        epi[1:N]
     end)
     for i in 1:N
-        for g_k in [0.0, g_train[i], 1.0], s_k in [s_min, s_train[i], CONFIG.Xi.s_max], d_k in [CONFIG.Xi.d_min, d_train[i], CONFIG.Xi.d_max]
+        for g_k in [0.0, g_train[i], 1.0], s_k in [Xi.s_min, s_train[i], Xi.s_max], d_k in [Xi.d_min, d_train[i], Xi.d_max]
             dist = W[1]*abs(g_k-g_train[i]) + W[2]*abs(s_k-s_train[i]) + W[3]*abs(d_k-d_train[i])
             cp, cm = (s_k+d_k)*tau_val - d_k, (s_k+d_k)*tau_val + d_k
             @constraint(m, epi[i] >= -g_k*s_k + cp*(g_k - n) - lam*dist)
@@ -146,26 +148,21 @@ function solve_dro_exact(g_train, s_train, d_train, s_min, W)
 
     n_opts, prof_is, lam_opts = Float64[], Float64[], Float64[]
 
-    for eps in CONFIG.epsilons
-        @objective(m, Min, lam*eps + sum(epi)/N)
-        optimize!(m)
-        push!(n_opts, value(n))
-        push!(prof_is, -objective_value(m))
-        push!(lam_opts, value(lam))
-    end
-    return n_opts, prof_is, lam_opts
+    @objective(m, Min, lam*eps + sum(epi)/N)
+    optimize!(m)
+    return value.(n)
 end
 
-function solve_dro_approx_mccormick(g_train, s_train, d_train, s_min, W)
+function solve_dro_approx_mccormick(g_train, s_train, d_train, Xi, W, eps)
     N = length(g_train)
     m = Model(HiGHS.Optimizer); set_silent(m)
-    C, d = build_mccormick_support(s_min)
-    @variables(m, begin 
+    C, d = build_mccormick_support(Xi)
+    @variables(m, begin
         0 <= n <= 1
         lam >= 0
         epi[1:N]
         g1[1:N, 1:14] >= 0
-        g2[1:N, 1:14] >= 0 
+        g2[1:N, 1:14] >= 0
     end)
 
     B1 = [0.0, -tau_val*n, (1.0-tau_val)*n, tau_val-1.0, tau_val-1.0]
@@ -182,19 +179,14 @@ function solve_dro_approx_mccormick(g_train, s_train, d_train, s_min, W)
         @constraint(m, -(C'*g2[i,:] .- B2) .<= lam .* W)
     end
     n_opts, prof_is, lam_opts = Float64[], Float64[], Float64[]
-    for eps in CONFIG.epsilons
-        @objective(m, Min, lam*eps + sum(epi)/N)
-        optimize!(m)
-        push!(n_opts, value(n))
-        push!(prof_is, -objective_value(m))
-        push!(lam_opts, value(lam)) 
-    end
-    return n_opts, prof_is, lam_opts
+    @objective(m, Min, lam*eps + sum(epi)/N)
+    optimize!(m)
+    return value(n)
 end
 
-function solve_dro_approx_box(g_train, s_train, d_train, s_min, W)
+function solve_dro_approx_box(g_train, s_train, d_train, Xi, W, eps)
     N = length(g_train)
-    C, rhs, _, _ = build_box_support(s_min)
+    C, rhs, _, _ = build_box_support(Xi)
     K = size(C, 1)
 
     m = Model(HiGHS.Optimizer)
@@ -228,21 +220,15 @@ function solve_dro_approx_box(g_train, s_train, d_train, s_min, W)
     prof_is = Float64[]
     lam_opts = Float64[]
 
-    for eps in CONFIG.epsilons
-        @objective(m, Min, lam * eps + sum(epi) / N)
-        optimize!(m)
+    @objective(m, Min, lam * eps + sum(epi) / N)
+    optimize!(m)
 
-        push!(n_opts, value(n))
-        push!(prof_is, -objective_value(m))
-        push!(lam_opts, value(lam))
-    end
-
-    return n_opts, prof_is, lam_opts
+    return value(n)
 end
 
 function run_experiments()
     Random.seed!(42)
-    mkpath("results/extreme_wide_bounds")    
+    mkpath("results/extreme_wide_bounds")
     N_eps = length(CONFIG.epsilons)
     law_s = LocationScale(90.0, 35.0, TDist(3))
     law_d = MixtureModel([Normal(CONFIG.GMM.mu1, CONFIG.GMM.sig1), Normal(CONFIG.GMM.mu2, CONFIG.GMM.sig2)], [CONFIG.GMM.w1, CONFIG.GMM.w2])
@@ -273,29 +259,29 @@ function run_experiments()
                 d_train = clamp.(rand(law_d, N_train), CONFIG.Xi.d_min, CONFIG.Xi.d_max)
 
                 # exact
-                W_ex = [CONFIG.W_mult.g / max(std(g_train), 1e-6), 
-                        CONFIG.W_mult.s / max(std(s_train), 1e-6), 
+                W_ex = [CONFIG.W_mult.g / max(std(g_train), 1e-6),
+                        CONFIG.W_mult.s / max(std(s_train), 1e-6),
                         CONFIG.W_mult.d / max(std(d_train), 1e-6)]
-                
+
                 # approx
-                W_ap = [W_ex..., 
-                        1.0 / max(std(g_train .* s_train), 1e-6), 
+                W_ap = [W_ex...,
+                        1.0 / max(std(g_train .* s_train), 1e-6),
                         1.0 / max(std(g_train .* d_train), 1e-6)]
 
                 saa_n[sim] = solve_saa(g_train, s_train, d_train)
                 s_metrics = compute_oos_metrics(saa_n[sim], g_oos, s_oos, d_oos)
                 saa_metrics[sim, :] .= [s_metrics.mean, s_metrics.cvar5]
 
-                n_exact[sim, :], insample_exact[sim, :], lam_exact[sim, :] = solve_dro_exact(g_train, s_train, d_train, scen.s_min, W_ex)
-                n_mccormick[sim, :], insample_mccormick[sim, :], lam_mccormick[sim, :] = solve_dro_approx_mccormick(g_train, s_train, d_train, scen.s_min, W_ap)
+                # n_exact[sim, :], insample_exact[sim, :], lam_exact[sim, :] = solve_dro_exact(g_train, s_train, d_train, scen.s_min, W_ex)
+                # n_mccormick[sim, :], insample_mccormick[sim, :], lam_mccormick[sim, :] = solve_dro_approx_mccormick(g_train, s_train, d_train, scen.s_min, W_ap)
                 n_box[sim, :], insample_box[sim, :], lam_box[sim, :] = solve_dro_approx_box(g_train, s_train, d_train, scen.s_min, W_ap)
 
-                for j in 1:N_eps    
-                    me = compute_oos_metrics(n_exact[sim, j], g_oos, s_oos, d_oos)
-                    ma = compute_oos_metrics(n_mccormick[sim, j], g_oos, s_oos, d_oos)
+                for j in 1:N_eps
+                    # me = compute_oos_metrics(n_exact[sim, j], g_oos, s_oos, d_oos)
+                    # ma = compute_oos_metrics(n_mccormick[sim, j], g_oos, s_oos, d_oos)
                     mbox = compute_oos_metrics(n_box[sim, j], g_oos, s_oos, d_oos)
-                    metrics_exact[sim, j, :] .= [me.mean, me.cvar5]
-                    metrics_mccormick[sim, j, :] .= [ma.mean, ma.cvar5]
+                    # metrics_exact[sim, j, :] .= [me.mean, me.cvar5]
+                    # metrics_mccormick[sim, j, :] .= [ma.mean, ma.cvar5]
                     metrics_box[sim, j, :] .= [mbox.mean, mbox.cvar5]
                 end
             end
@@ -308,55 +294,55 @@ function run_experiments()
 
             for (j, eps) in enumerate(CONFIG.epsilons)
                 push!(results, Dict(
-                    :Scenario => scen.name, 
-                    :Epsilon => eps, 
-                    :Method => "exact", 
-                    :N_opt => mean(n_exact[:, j]), 
-                    :Profit_Mean => mean(metrics_exact[:, j, 1]), 
+                    :Scenario => scen.name,
+                    :Epsilon => eps,
+                    :Method => "exact",
+                    :N_opt => mean(n_exact[:, j]),
+                    :Profit_Mean => mean(metrics_exact[:, j, 1]),
                     :Reliability => mean(metrics_exact[:, j, 1] .>= insample_exact[:, j]),
-                    :Profit_Q20 => quantile(metrics_exact[:, j, 1], 0.20), 
+                    :Profit_Q20 => quantile(metrics_exact[:, j, 1], 0.20),
                     :Profit_Q80 => quantile(metrics_exact[:, j, 1], 0.80),
-                    :CVaR5 => mean(metrics_exact[:, j, 2]), 
-                    :SAA_Profit => mean(saa_metrics[:, 1]), 
+                    :CVaR5 => mean(metrics_exact[:, j, 2]),
+                    :SAA_Profit => mean(saa_metrics[:, 1]),
                     :RO_Profit => ro_metrics.mean,
-                    :SAA_N => mean(saa_n), 
-                    :RO_N => n_ro, 
-                    :SAA_CVaR => mean(saa_metrics[:, 2]), 
-                    :RO_CVaR => ro_metrics.cvar5, 
+                    :SAA_N => mean(saa_n),
+                    :RO_N => n_ro,
+                    :SAA_CVaR => mean(saa_metrics[:, 2]),
+                    :RO_CVaR => ro_metrics.cvar5,
                     :Lambda => mean(lam_exact[:, j])
                 ))
                 push!(results, Dict(
-                    :Scenario => scen.name, 
-                    :Epsilon => eps, 
-                    :Method => "approx-mccormick", 
-                    :N_opt => mean(n_mccormick[:, j]), 
-                    :Profit_Mean => mean(metrics_mccormick[:, j, 1]), 
+                    :Scenario => scen.name,
+                    :Epsilon => eps,
+                    :Method => "approx-mccormick",
+                    :N_opt => mean(n_mccormick[:, j]),
+                    :Profit_Mean => mean(metrics_mccormick[:, j, 1]),
                     :Reliability => mean(metrics_mccormick[:, j, 1] .>= insample_mccormick[:, j]),
-                    :Profit_Q20 => quantile(metrics_mccormick[:, j, 1], 0.20), 
+                    :Profit_Q20 => quantile(metrics_mccormick[:, j, 1], 0.20),
                     :Profit_Q80 => quantile(metrics_mccormick[:, j, 1], 0.80),
-                    :CVaR5 => mean(metrics_mccormick[:, j, 2]), 
-                    :SAA_Profit => mean(saa_metrics[:, 1]), 
+                    :CVaR5 => mean(metrics_mccormick[:, j, 2]),
+                    :SAA_Profit => mean(saa_metrics[:, 1]),
                     :RO_Profit => ro_metrics.mean,
-                    :SAA_N => mean(saa_n), :RO_N => n_ro, 
-                    :SAA_CVaR => mean(saa_metrics[:, 2]), 
-                    :RO_CVaR => ro_metrics.cvar5, 
+                    :SAA_N => mean(saa_n), :RO_N => n_ro,
+                    :SAA_CVaR => mean(saa_metrics[:, 2]),
+                    :RO_CVaR => ro_metrics.cvar5,
                     :Lambda => mean(lam_mccormick[:, j])
                 ))
                 push!(results, Dict(
-                    :Scenario => scen.name, 
-                    :Epsilon => eps, 
-                    :Method => "approx-box", 
-                    :N_opt => mean(n_box[:, j]), 
-                    :Profit_Mean => mean(metrics_box[:, j, 1]), 
+                    :Scenario => scen.name,
+                    :Epsilon => eps,
+                    :Method => "approx-box",
+                    :N_opt => mean(n_box[:, j]),
+                    :Profit_Mean => mean(metrics_box[:, j, 1]),
                     :Reliability => mean(metrics_box[:, j, 1] .>= insample_box[:, j]),
-                    :Profit_Q20 => quantile(metrics_box[:, j, 1], 0.20), 
+                    :Profit_Q20 => quantile(metrics_box[:, j, 1], 0.20),
                     :Profit_Q80 => quantile(metrics_box[:, j, 1], 0.80),
-                    :CVaR5 => mean(metrics_box[:, j, 2]), 
-                    :SAA_Profit => mean(saa_metrics[:, 1]), 
+                    :CVaR5 => mean(metrics_box[:, j, 2]),
+                    :SAA_Profit => mean(saa_metrics[:, 1]),
                     :RO_Profit => ro_metrics.mean,
-                    :SAA_N => mean(saa_n), :RO_N => n_ro, 
-                    :SAA_CVaR => mean(saa_metrics[:, 2]), 
-                    :RO_CVaR => ro_metrics.cvar5, 
+                    :SAA_N => mean(saa_n), :RO_N => n_ro,
+                    :SAA_CVaR => mean(saa_metrics[:, 2]),
+                    :RO_CVaR => ro_metrics.cvar5,
                     :Lambda => mean(lam_box[:, j])
                 ))
             end
@@ -366,4 +352,6 @@ function run_experiments()
     end
 end
 
-run_experiments()
+function @main(ARGS)
+    run_experiments()
+end
