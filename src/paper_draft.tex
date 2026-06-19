@@ -1,0 +1,737 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\cP}{\mathcal{P}}
+\newcommand{\cX}{\mathcal{X}}
+\newcommand{\cW}{\mathcal{W}}
+\newcommand{\XiSet}{\Xi}
+\newcommand{\eps}{\varepsilon}
+\newcommand{\hxi}{\widehat\xi}
+\newcommand{\hP}{\widehat{\mathbb P}_N}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+\newcommand{\argmax}{\operatorname*{arg\,max}}
+\newcommand{\conv}{\operatorname{conv}}
+
+\DeclareMathOperator{\dist}{dist}
+
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{remark}{Remark}
+
+\title{Wasserstein Distributionally Robust Nomination in Energy Markets}
+\author{Charles Garrisi \qquad Welington de Oliveira \qquad François Pacaud}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+problem/difficulty/method/contributions/numerical rersults
+\end{abstract}
+\vspace{2em}
+\tableofcontents
+
+\section{Introduction}
+\subsection{Motivation}
+\subsection{Literature review}
+\subsubsection{Classical methods are not enough (SO/SAA, RO)}
+\subsubsection{DRO is the way to go}
+\subsection{Contributions}
+\subsection{Paper structure}
+
+
+\section{Problem formulation}
+We consider a renewable-energy producer participating in a day-ahead electricity market and subsequently exposed to an imbalance-settlement mechanism. 
+The decision is made before delivery. 
+At that time, the producer chooses a nomination \(n\), the decision variable representing the quantity of energy committed to the day-ahead market, while the realized generation $g$ and the relevant market prices are still uncertain.
+We denote the vector of uncertain parameters by \(\xi\). 
+Generation and nominations are normalized by the installed capacity, so that the feasible decision set is \[ \cX=[0,1]. \]
+Lastly, we focus on a single delivery period — which corresponds to a 15-minute interval for the European market since October $1^{\text{st}}$, 2025 — and adopt the convention that the producer aims to minimize a loss denoted by \(\ell(n,\xi)\). 
+
+\subsection{Uncertainty modeling} 
+\label{subsec:uncertainty-modeling} 
+
+\subsubsection{Description of the uncertainty structure}
+As mentioned, we model the random environment by a vector $\xi$ of uncertain parameters. 
+This vector contains the realized renewable generation \(g\), the day-ahead spot price \(s\), the up-regulation price \(r^+\), and the down-regulation price \(r^-\). 
+The variable \(g\in[0,1]\) denotes the realized fraction of available capacity. 
+The spot price \(s\) is the price at which the day-ahead nomination is settled, while the prices \(r^+\) and \(r^-\) determine the cost or remuneration of deviations between the nomination and the realized generation. 
+If the producer is short, meaning \(n>g\), the deficit \((n-g)^+\) must be settled at the up-regulation price \(r^+\). 
+If the producer is long, meaning \(g>n\), the surplus \((g-n)^+\) is settled at the down-regulation price \(r^-\). 
+The single-period loss is therefore 
+\begin{equation} 
+    \label{eq:loss-original} 
+    \ell(n,\xi) = -ns - r^-(g-n)^+ + r^+(n-g)^+ . 
+\end{equation} 
+The first term corresponds to the negative day-ahead revenue, while the last two terms encode the imbalance settlement. 
+A key hypothesis in our work is that we enable the spot price \(s\) and the imbalance prices \(r^+\) and \(r^-\) to become negative. 
+This hypothesis is often overlooked as it introduces additional complexity in the analysis and decision-making process. 
+In fact, allowing negative prices is a crucial feature of electricity markets, especially in periods of excess supply, low demand, or constrained flexibility.
+When $s$ is assumed non-negative, the day-ahead settlement term tends to reward larger nominations, all else equal. 
+When $s$ is allowed to be negative, the first term in~\eqref{eq:loss-original} penalizes large nominations. 
+Thus, negative prices completely alter the economic incentives of the producer and hence the optimal decision to take. 
+Negative prices also affect the geometry of the uncertainty set invalidate convexity properties that hold in classical positive-price newsvendor models. 
+\\
+
+\subsubsection{How to model generation?}
+\label{subsubsec:model-generation}
+
+The realized renewable production \(g\) is not known at the time of nomination. 
+In practice, the producer observes a point forecast, or possibly a predictive distribution, but the realized production may differ because of weather forecast errors, local curtailment, outages, or measurement noise. 
+Since both the nomination and the realized production are normalized by installed capacity, we model
+\[
+    g\in[\underline g,\overline g]\subseteq[0,1].
+\]
+The bounds \(\underline g\) and \(\overline g\) may be interpreted in different ways depending on the application. 
+They may correspond to physical limits, to forecast-based confidence bounds, or to empirical bounds obtained after removing gross data errors. 
+In the numerical experiments, we use the normalized bounds \(\underline g=0\) and \(\overline g=1\).
+\\
+
+It is useful to think of realized generation as a perturbation of a forecast. 
+Let \(f\in[0,1]\) denote a point forecast and let \(\zeta\) denote a relative forecast error. 
+We use the multiplicative representation
+\[
+    g=\Pi_{[0,1]}\big((1+\zeta)f\big),
+\]
+where \(\Pi_{[0,1]}\) denotes projection onto the physical interval \([0,1]\). This representation has two advantages. First, it preserves the interpretation of \(g\) as a normalized production level. Second, it makes forecast errors scale with the forecast itself: an error of a given relative magnitude has a larger absolute impact when expected production is high.
+\\
+
+This parametric representation is used only to generate synthetic data in the numerical section. 
+The optimization model itself does not assume anything on \(g\) apart from its support bounds. 
+
+\subsubsection{How to model spot prices?}
+\label{subsubsec:model-spot-price}
+
+The day-ahead spot price \(s\) is also uncertain at the time of nomination. 
+It is determined by the market-clearing process after participants submit their bids, and it reflects the interaction between demand, renewable availability, conventional generation costs, plant availability, interconnection constraints, and network conditions. 
+Spot prices are therefore hard to predict, volatile and may exhibit spikes, strong seasonality, and regime changes.
+\\
+
+As mentioned, a central feature of modern electricity markets is that spot prices may become negative. 
+Negative prices typically occur when inflexible, high renewable availability, and low demand jointly create excess supply.
+For this reason, we do not impose \(s\ge0\). Instead, we assume
+\[
+    s\in[\underline s,\overline s],
+\]
+where \(\underline s\) may be negative.
+\\
+
+
+In the synthetic experiments, spot prices are generated from a rescaled Student's t-distribution so that they can take negative values and exhibit heavier tails than a normal distribution.
+This choice is not part of the model itself but provides a controlled way to test the sensitivity of the different methods to volatility, price spikes, support size, and negative-price regimes.
+
+\subsubsection{How to model imbalance prices?}
+\label{subsubsec:model-imbalance-price}
+
+Imbalance prices are knowingly very difficult to model.
+Rather than modelling \(r^+\) and \(r^-\) directly, we separate the average imbalance level from the imbalance asymmetry. 
+Let \[ r=\frac{r^++r^-}{2}, \qquad \delta=r-s, \] where \(\delta\) measures the deviation between the average imbalance price and the spot price. 
+The variable \(\delta\) captures the residual imbalance component that is not explained by the spot price alone. 
+Positive values of \(\delta\) correspond to an average imbalance price above the spot price, while negative values correspond to an average imbalance price below the spot price.
+We then introduce an asymmetry parameter \(\tau\in[0,1)\) and write
+\begin{equation}
+    \label{eq:imbalance-reparam}
+    r^+=(s+\delta)(1+\tau),
+    \qquad
+    r^-=(s+\delta)(1-\tau),
+\end{equation}
+where \(\tau\) controls the relative spread between the two imbalance prices around their average level \(r=s+\delta\). 
+This parametrization separates the stochastic component \(\delta\), which moves the average imbalance level relative to the spot price, from the structural asymmetry \(\tau\), which controls the difference between deficit and surplus settlement.
+\\
+
+In the following, \(\tau\) is assumed to be fixed over a given delivery period, which enables to keep the asymmetry of the two-price imbalance mechanism explicit while avoiding an additional random component. 
+From the data, this assumption seems reasonable. \color{red}[Figure to prove my point] \color{black}
+\\
+
+After this reparametrization, the uncertainty vector becomes
+\[
+    \xi=(g,s,\delta)\in\R^3.
+\]
+The corresponding support is then
+\[
+    \XiSet
+    =
+    [\underline g,\overline g]
+    \times
+    [\underline s,\overline s]
+    \times
+    [\underline\delta,\overline\delta].
+\]
+The imbalance spreads faced by the producer are
+\begin{equation}
+    \label{eq:cplus-cminus}
+    c^-(s,\delta)
+    =
+    s-r^-
+    =
+    (s+\delta)\tau-\delta,
+    \qquad
+    c^+(s,\delta)
+    =
+    r^+-s
+    =
+    (s+\delta)\tau+\delta .
+\end{equation}
+Here \(c^-(s,\delta)\) is the marginal loss associated with surplus production, while \(c^+(s,\delta)\) is the marginal loss associated with a production deficit. 
+Both depend on uncertain prices. 
+This is a major difference from the classical newsvendor model, where the underage and overage costs are deterministic constants.
+\\
+
+Using the identity
+\[
+    n-g=(n-g)^+-(g-n)^+,
+\]
+the loss can be rewritten as
+\begin{equation}
+    \label{eq:loss-reparam}
+    \ell(n,\xi)
+    =
+    -gs
+    +
+    c^-(s,\delta)(g-n)^+
+    +
+    c^+(s,\delta)(n-g)^+,
+    \qquad
+    \xi=(g,s,\delta).
+\end{equation}
+The term \(-gs\) is the negative value of realized production at the spot price, while the remaining terms penalize deviations between realized production and nomination, with imbalance costs that depend on the market state. 
+This formulation makes explicit the newsvendor-like structure of the nomination decision, but it also reveals the main difficulty: the objective contains products of uncertainty variables, in particular \(gs\) and \(g\delta\). 
+Consequently, while the loss is piecewise affine in the nomination for fixed uncertainty, it is nonconvex in the uncertainty. 
+\\
+
+In the synthetic experiments, imbalance spreads are generated from a combination of two light-tailed distributions, corresponding to a normal and an extreme market scenarios, and then truncated to the support interval. 
+This choice is not part of the model itself but provides a controlled way to test the sensitivity of the different methods to volatility, price spikes, support size, and negative-price regimes.
+\subsection{Optimization problem} 
+\label{subsec:optimization-problem} 
+
+\subsubsection{Assumptions}
+We now state the modelling assumptions used throughout the paper. 
+\begin{assumption}[Price-taking producer] 
+    \label{ass:price-taker} The producer is a price taker. 
+    We consider a producer small enough so that its nomination does not affect the spot price, the imbalance prices, or the system imbalance state. 
+\end{assumption}
+\begin{remark}
+    Without this assumption, the nomination would influence the spot or imbalance prices.
+    Except for big actors like EDF in France, this is generally the case.
+\end{remark} 
+
+\begin{assumption}[Compact support] 
+    \label{ass:compact-support} 
+    The uncertainty vector satisfies \[ \xi=(g,s,\delta)\in\XiSet := [\underline g,\overline g] \times [\underline s,\overline s] \times [\underline\delta,\overline\delta], \] where \(0\le \underline g\le \overline g\le1\). 
+    The price bounds may contain negative values. 
+\end{assumption} 
+\begin{remark}
+    This assumption ensures that the loss is bounded and attains its worst-case value on \(\XiSet\). 
+This is needed for the sample-wise separation problems to be well posed and for the finite-candidate arguments used later: over a box support, the bilinear terms can be lifted, bounded, and relaxed by McCormick envelopes, and the exact separation problem can be reduced to a finite set of candidate points. 
+\end{remark}
+
+\begin{assumption}[Historical data] 
+    \label{ass:data} 
+    We observe \(N\) historical samples \[ \hxi_i=(\widehat g_i,\widehat s_i,\widehat\delta_i)\in\XiSet, \qquad i=1,\ldots,N, \] and denote the empirical distribution by \[ \hP=\frac1N\sum_{i=1}^N\delta_{\hxi_i}. \] 
+\end{assumption} 
+\begin{remark}
+   The empirical distribution is the center of the Wasserstein ambiguity set as this is our best known estimate at the time of the decision. 
+\end{remark}
+
+\begin{assumption}[No independence] 
+    \label{ass:no-independence} 
+    We impose no independence between \(g\), \(s\), and \(\delta\). 
+    The Wasserstein ambiguity set is built on the joint empirical distribution of \(\xi=(g,s,\delta)\). 
+\end{assumption} 
+
+Renewable generation, spot prices, and imbalance prices are typically dependent: high renewable availability often coincide with low or negative spot prices, and imbalance prices react to system conditions that are themselves correlated with renewable forecast errors. 
+
+\begin{remark}[On heavy tails] 
+    Electricity prices and imbalance prices may exhibit extreme spikes. 
+    In our model, such events are handled by choosing wide support bounds that include extreme, unseen scenarios. 
+\end{remark}
+
+\begin{assumption}[Transportation metric] 
+    \label{ass:transportation-metric} 
+    The transportation cost is the weighted \(\ell_1\) metric \[ d_W(\xi,\xi') = \|W(\xi-\xi')\|_1 = w_g|g-g'|+w_s|s-s'|+w_\delta|\delta-\delta'|, \] where \(W=\operatorname{diag}(w_g,w_s,w_\delta)\) and \(w_g,w_s,w_\delta>0\). 
+\end{assumption} 
+
+\begin{remark}
+    The weights in \(W\) normalize the different physical units and magnitudes of the uncertainty components. 
+    Without such a normalization, the Wasserstein ball would be dominated by the component with the largest numerical scale, which would completely distort the ambiguity geometry. 
+    In the numerical experiments, these weights are the empirical standard deviations, although we could also use interquartile ranges or physical bounds. 
+\end{remark}
+
+\subsubsection{DRO formulation}
+Let us write the distributionally robust formulation for our nomination problem.
+Given a Wasserstein radius \(\eps\ge0\), we define the ambiguity set 
+    \begin{equation} 
+        \label{eq:wasserstein-ambiguity} 
+        \cP_\eps = \left\{ \Q\in\cP(\XiSet): \cW_{d_W}(\Q,\hP)\le \eps \right\}, 
+    \end{equation} 
+    where \(\cW_{d_W}\) denotes the Wasserstein distance induced by the ground metric \(d_W\). 
+    The resulting distributionally robust nomination problem is 
+    \begin{equation} \label{eq:dro-primal-main} \inf_{n\in[0,1]} \sup_{\Q\in\cP_\eps} \E_\Q[\ell(n,\xi)] . \end{equation} 
+    The radius \(\eps\) controls the level of robustness. When \(\eps=0\), the ambiguity set reduces to the empirical distribution and \eqref{eq:dro-primal-main} becomes the sample average approximation \[ \min_{n\in[0,1]} \frac1N\sum_{i=1}^N \ell(n,\hxi_i). \] 
+    As \(\eps\) increases, the adversary can move probability mass farther away from the observed samples, producing decisions that are more conservative but less sensitive to sampling error. 
+    In the limiting regime where the transportation budget is sufficiently large, the behavior approaches that of a robust model driven primarily by the support \(\XiSet\). 
+    For fixed \(\xi\), the function \(n\mapsto\ell(n,\xi)\) is piecewise affine. 
+    It is convex in \(n\) whenever \[ c^-(s,\delta)+c^+(s,\delta) = 2\tau(s+\delta) \ge0. \] 
+    This condition is met when \(\tau\ge0\) and \(s+\delta=r\ge0\), but it may fail if the average imbalance price becomes negative. 
+    For fixed \(n\), the map \(\xi\mapsto\ell(n,\xi)\) is nonconvex because of the products \(gs\) and \(g\delta\). 
+    This prevents a direct use of classical convex reformulations in the likes of~\cite{EsfahaniKuhn2018} that rely on convexity of the loss in the uncertain parameters. 
+    The remaining difficulty is to handle this infinite-dimensional, nonconvex problem.
+    
+\section{Solution methods} 
+\label{sec:solution-methods} 
+This section presents three resolution strategies. 
+The first two are conservative convex reformulations based on lifting and polyhedral relaxations. 
+The third one keeps the original uncertainty variables and exploits the structure of the separation problem. 
+
+ \subsection{Relaxation as a convex problem} 
+ \label{subsec:convex-relaxations} 
+ \subsubsection{Lifting the bilinear terms}
+ The nonconvexity in \(\xi\) arises from the products \(gs\) and \(g\delta\) in the loss function~\eqref{eq:loss-reparam}. 
+ To address this, we introduce lifted variables \[ t_s=gs, \qquad t_\delta=g\delta, \] and define \[ \widetilde\xi=(g,s,\delta,t_s,t_\delta)\in\R^5. \] 
+ In the lifted space, the two branches of the loss become affine in \(\widetilde\xi\). 
+ On the surplus branch \(g\ge n\), one has \begin{align} \label{eq:loss-surplus-lifted} \ell^+(n,\widetilde\xi) &= -t_s+\big((s+\delta)\tau-\delta\big)(g-n) \nonumber\\ &= (\tau-1)t_s + (\tau-1)t_\delta - \tau n s + (1-\tau)n\delta . \end{align} 
+ On the deficit branch \(g\le n\), one has \begin{align} \label{eq:loss-deficit-lifted} \ell^-(n,\widetilde\xi) &= -t_s+\big((s+\delta)\tau+\delta\big)(n-g) \nonumber\\ &= -(1+\tau)t_s - (1+\tau)t_\delta + \tau n s + (1+\tau)n\delta . \end{align} 
+ For fixed \(n\), both branches can be written as \[ \ell^k(n,\widetilde\xi)=a_k(n)^\top\widetilde\xi+b_k(n), \qquad k\in\{+,-\}, \] with \(b_+(n)=b_-(n)=0\) and \[ a_+(n) = \begin{pmatrix} 0\\ -\tau n\\ (1-\tau)n\\ \tau-1\\ \tau-1 \end{pmatrix}, \qquad a_-(n) = \begin{pmatrix} 0\\ \tau n\\ (1+\tau)n\\ -(1+\tau)\\ -(1+\tau) \end{pmatrix}. \] 
+ The exact lifted support is \[ \widetilde\Xi_{\rm exact} = \left\{ (g,s,\delta,t_s,t_\delta): (g,s,\delta)\in\XiSet,\ t_s=gs,\ t_\delta=g\delta \right\}. \] 
+ However, this set is still nonconvex. 
+ The following relaxations replace \(\widetilde\Xi_{\rm exact}\) by a tractable polyhedral outer approximation. 
+ 
+ \subsubsection{Linear relaxations}
+\paragraph{Box uncertainty set linearization}
+ The simplest relaxation consists in keeping only coordinate-wise bounds on the lifted variables: \[ \widetilde\Xi_{\rm box} = [\underline g,\overline g] \times [\underline s,\overline s] \times [\underline\delta,\overline\delta] \times [\underline t_s,\overline t_s] \times [\underline t_\delta,\overline t_\delta], \] where \[ \underline t_s = \min\{gs:g\in[\underline g,\overline g],\ s\in[\underline s,\overline s]\}, \qquad \overline t_s = \max\{gs:g\in[\underline g,\overline g],\ s\in[\underline s,\overline s]\}, \] and similarly \[ \underline t_\delta = \min\{g\delta:g\in[\underline g,\overline g],\ \delta\in[\underline\delta,\overline\delta]\}, \qquad \overline t_\delta = \max\{g\delta:g\in[\underline g,\overline g],\ \delta\in[\underline\delta,\overline\delta]\}. \] 
+ Equivalently, \[ \widetilde\Xi_{\rm box} = \{\widetilde\xi\in\R^5:C_{\rm box}\widetilde\xi\le d_{\rm box}\}. \] 
+ This relaxation is very cheap computationally, but it is generally very loose because it ignores the dependence between \(g\), \(s\), \(\delta\), and the lifted products. 
+ \\
+
+ More than that, the fact that the lifted products are decoupled from the original variables entails that this approach may lead to impossible scenarios in the lifted space.
+ \color{red}[Here, maybe add the formal proof or an example of this] \color{black}
+ In particular, as $s$ and $\delta$ can be negative while $g>0$, the box relaxation includes scenarios with $t_s=gs<0$ or $t_\delta=g\delta<0$ even though $g$ and $s$ (respectively $\delta$) are both nonnegative in the original space. 
+ This problem is discussed in more detail in the numerical experiments, where we observe that the box relaxation is so loose that it can lead to extremely conservative decisions — essentially a zero nomination.
+
+\paragraph{McCormick linearization}
+We can obtain a tighter convex relaxation by replacing the bilinear equalities by their McCormick envelopes. 
+As every uncertainty variable is confined within a box, we can write explicit linear inequalities and partially restore the dependence between \(g\), \(s\), and \(\delta\).
+\\
+
+For instance, for \(t_s=gs\), we know that $g\in[\underline g,\overline g]$ and $s\in[\underline s,\overline s]$, so that $(g-\underline g)(s-\underline s)\ge0$ and its envelope is given by 
+\begin{align} t_s &\ge \underline g\,s+\underline s\,g-\underline g\,\underline s, \label{eq:mccormick-s-1}\\ t_s &\ge \overline g\,s+\overline s\,g-\overline g\,\overline s, \label{eq:mccormick-s-2}\\ t_s &\le \underline g\,s+\overline s\,g-\underline g\,\overline s, \label{eq:mccormick-s-3}\\ t_s &\le \overline g\,s+\underline s\,g-\overline g\,\underline s. \label{eq:mccormick-s-4} \end{align} 
+Analogously, for \(t_\delta=g\delta\), \begin{align} t_\delta &\ge \underline g\,\delta+\underline\delta\,g-\underline g\,\underline\delta, \label{eq:mccormick-d-1}\\ t_\delta &\ge \overline g\,\delta+\overline\delta\,g-\overline g\,\overline\delta, \label{eq:mccormick-d-2}\\ t_\delta &\le \underline g\,\delta+\overline\delta\,g-\underline g\,\overline\delta, \label{eq:mccormick-d-3}\\ t_\delta &\le \overline g\,\delta+\underline\delta\,g-\overline g\,\underline\delta. \label{eq:mccormick-d-4} \end{align} 
+Compared to the box uncertainty set linearization, this approach provides a tighter relaxation, although it is of course still looser than the exact formulation. 
+Let \[ \widetilde\Xi_{\rm Mc} = \{\widetilde\xi\in\R^5:C_{\rm Mc}\widetilde\xi\le d_{\rm Mc}\} \] denote the polytope defined by the original bounds and by \eqref{eq:mccormick-s-1}--\eqref{eq:mccormick-d-4}. 
+So far, we have that \[ \widetilde\Xi_{\rm exact} \subseteq \widetilde\Xi_{\rm Mc} \subseteq \widetilde\Xi_{\rm box}. \] 
+Consequently, for every fixed \(n\), \(\lambda\), and sample \(i\), the separation value is bounded as follows: 
+\[ \mathcal V_i^{\rm exact}(n,\lambda) \le \mathcal V_i^{\rm Mc}(n,\lambda) \le \mathcal V_i^{\rm box}(n,\lambda). \] 
+
+\subsubsection{Wasserstein DRO and the Esfahani--Kuhn LP reformulation}
+\label{subsubsec:ek-lp-reformulation}
+
+We now show how these lifted relaxations lead to tractable Wasserstein DRO problems. 
+The key point is that, after lifting the bilinear terms and replacing the lifted support by a polyhedral outer approximation, the relaxed loss can be written as the maximum of finitely many affine functions of the lifted uncertainty vector. 
+Indeed, this is precisely the setting in which the convex reformulation theorem of Esfahani and Kuhn~\cite{EsfahaniKuhn2018} yields a finite-dimensional LP.
+\\
+
+We thus define the lifted max-affine loss
+\[
+    \widetilde\ell_R(n,\widetilde\xi)
+    =
+    \max_{k\in\{+,-\}}
+    \left\{
+        a_k(n)^\top\widetilde\xi+b_k(n)
+    \right\}.
+\]
+\begin{proposition}[Esfahani--Kuhn LP reformulation]
+\label{prop:convex-reformulation-kuhn}
+Suppose that the uncertainty set $\Xi\subseteq\mathbb{R}^m$ is convex and closed, and the negative constituent function $-\ell_k$ are proper, convec, and lower semicontinuous for all $k\le K$. 
+Moreover, suppose that $\ell_k$ is not indentically equal to $-\infty$ for all $k\le K$.
+Then, for any $\varepsilon\ge 0$, the lifted Wasserstein DRO problem
+\[
+    \inf_{n\in[0,1]}
+    \sup_{\mathbb Q\in\widetilde{\mathcal P}_{\varepsilon}^{R}}
+    \mathbb E_{\mathbb Q}
+    \left[
+        \widetilde\ell_R(n,\widetilde\xi)
+    \right]
+\]
+is equivalent to the LP
+\begin{equation}
+\label{eq:lifted-dro-lp}
+\begin{aligned}
+    \min_{n,\lambda,z,\gamma}\quad
+    &
+    \lambda\varepsilon+\frac1N\sum_{i=1}^N z_i
+    \\
+    \textnormal{s.t.}\quad
+    &
+    b_k(n)
+    +
+    a_k(n)^\top\widehat{\widetilde\xi}_i
+    +
+    \gamma_{ik}^\top
+    \left(
+        d_R-C_R\widehat{\widetilde\xi}_i
+    \right)
+    \le z_i,
+    &&
+    i=1,\ldots,N,\ k\in\{+,-\},
+    \\
+    &
+    C_R^\top\gamma_{ik}-a_k(n)\le \lambda\widetilde w,
+    &&
+    i=1,\ldots,N,\ k\in\{+,-\},
+    \\
+    &
+    -C_R^\top\gamma_{ik}+a_k(n)\le \lambda\widetilde w,
+    &&
+    i=1,\ldots,N,\ k\in\{+,-\},
+    \\
+    &
+    \gamma_{ik}\ge0,
+    &&
+    i=1,\ldots,N,\ k\in\{+,-\},
+    \\
+    &
+    0\le n\le1,
+    \qquad
+    \lambda\ge0 .
+\end{aligned}
+\end{equation}
+\end{proposition}
+
+\begin{proof}Esfahani and Kuhn~\cite{EsfahaniKuhn2018}.\\
+
+ Let \(\widetilde W=\operatorname{diag}(\widetilde w)\) be the weight matrix used in the lifted transportation cost, and let \[ \widehat{\widetilde\xi}_i = (\widehat g_i,\widehat s_i,\widehat\delta_i, \widehat g_i\widehat s_i, \widehat g_i\widehat\delta_i) \] be the natural lifting of sample \(i\). 
+ Consider a generic polyhedral relaxation \[ \widetilde\Xi_R = \{\widetilde\xi:C_R\widetilde\xi\le d_R\}, \qquad R\in\{\mathrm{box},\mathrm{Mc}\}. \] 
+ For each branch \(k\in\{+,-\}\), the relaxed separation term is \[ \sup_{\widetilde\xi\in\widetilde\Xi_R} \left\{ a_k(n)^\top\widetilde\xi+b_k(n) - \lambda \|\widetilde W(\widetilde\xi-\widehat{\widetilde\xi}_i)\|_1 \right\}. \] 
+ By LP duality, this supremum is bounded above by \(z_i\) if and only if there exists \(\gamma_{ik}\ge0\) such that \[ C_R^\top\gamma_{ik}-a_k(n)\le \lambda \widetilde w, \qquad -C_R^\top\gamma_{ik}+a_k(n)\le \lambda \widetilde w, \] and \[ b_k(n) + a_k(n)^\top\widehat{\widetilde\xi}_i + \gamma_{ik}^\top \left(d_R-C_R\widehat{\widetilde\xi}_i\right) \le z_i . \] 
+\end{proof}
+
+\begin{remark}[Change of ambiguity geometry] 
+    The lifted formulations do not only reformulate the original Wasserstein DRO problem. 
+    They also change the geometry of the ambiguity set because transportation is now measured in the lifted space \((g,s,\delta,t_s,t_\delta)\) rather than in the original space \((g,s,\delta)\). 
+    For that reason, the lifted relaxations are conservative approximations and not exact reformulations of \eqref{eq:dro-primal-main}. 
+\end{remark} 
+
+\subsection{Exact reformulation} 
+\label{subsec:exact-reformulation} 
+We now describe an exact approach for evaluating the separation value \[ \mathcal V_i(n,\lambda) = \sup_{\xi\in\XiSet} \left\{ \ell(n,\xi)-\lambda d_W(\xi,\hxi_i) \right\} \] without lifting the uncertainty vector. \color{red}[Actually, we still need to lift it to make the comparison fair!!] \color{black} 
+The key observation is that, given the low-dimensional structure of our problem, and the fact that the objective is multi-affine in \((g,s,\delta)\), we can reduce the search from $\Xi$ to a finite set of candidate points, given by the KKT necessary conditions. 
+That way, we can evaluate the separation problem both efficiently and exactly. 
+\subsubsection{KKT necessary condition and candidate points}
+For fixed \(n\) and \(\lambda\), split the separation problem into the surplus and deficit branches: \[ \mathcal V_i(n,\lambda) = \max\{\mathcal V_i^+(n,\lambda),\mathcal V_i^-(n,\lambda)\}, \] where 
+\begin{align} \label{eq:sep-plus} \mathcal V_i^+(n,\lambda) &:= \sup_{\xi\in\XiSet,\ g\ge n} \left\{ -gs+c^-(s,\delta)(g-n) -\lambda d_W(\xi,\hxi_i) \right\}, \\ \label{eq:sep-minus} \mathcal V_i^-(n,\lambda) &:= \sup_{\xi\in\XiSet,\ g\le n} \left\{ -gs+c^+(s,\delta)(n-g) -\lambda d_W(\xi,\hxi_i) \right\}. \end{align} 
+The absolute-value terms introduce breakpoints at \[ g=\widehat g_i,\qquad s=\widehat s_i,\qquad \delta=\widehat\delta_i. \] 
+The loss itself also introduces the breakpoint \(g=n\). 
+We then show the following lemma~\ref{lemma:candidate-sets} that for each sample \(i\), the solution is contained in a finite set of candidate points.
+
+\begin{lemma}[Candidate points for finite separation] 
+\label{lemma:candidate-sets}
+For fixed \(n\in[0,1]\), \(\lambda\ge0\), and sample \(i\), we can restrict the search for the worst-case uncertainty vector $\xi$ within a finite set of candidate points, namely \[ G_i(n) = \{\underline g,\overline g,\widehat g_i,n\}\cap[\underline g,\overline g], \] \[ S_i = \{\underline s,\overline s,\widehat s_i\}\cap[\underline s,\overline s], \qquad D_i = \{\underline\delta,\overline\delta,\widehat\delta_i\} \cap[\underline\delta,\overline\delta]. \] 
+The separation value \(\mathcal V_i(n,\lambda)\) is thus given by \begin{equation} \label{eq:finite-separation} \begin{aligned} \mathcal V_i(n,\lambda) = \max\Bigg\{ & \max_{\substack{g\in G_i(n),\,s\in S_i,\,\delta\in D_i\\ g\ge n}} \left[ -gs+c^-(s,\delta)(g-n) -\lambda d_W((g,s,\delta),\hxi_i) \right], \\ & \max_{\substack{g\in G_i(n),\,s\in S_i,\,\delta\in D_i\\ g\le n}} \left[ -gs+c^+(s,\delta)(n-g) -\lambda d_W((g,s,\delta),\hxi_i) \right] \Bigg\}. \end{aligned} \end{equation} 
+\end{lemma}
+
+\begin{proof} Consider one branch, for example \(g\ge n\). 
+    
+Les deux cas étant symétriques, nous considérons arbitrairement le cas de déficit \((g\le n)\).
+Le problème de séparation s'écrit alors
+\begin{equation}
+\begin{aligned}
+    \max_{g,s,\delta,u}
+    \quad
+    &
+    -gs
+    +
+    c^+(s,\delta)(n-g)
+    -
+    \lambda
+    \left(
+        w_g |g-\widehat g_i|
+        +
+        w_s |s-\widehat s_i|
+        +
+        w_\delta |\delta-\widehat\delta_i|
+    \right)
+    \\
+    \textnormal{s.t.}\quad
+    &
+    g\le n, 
+    \\
+    &
+    (g,s,\delta)\in\Xi,
+    \\
+    &
+    u_g\ge g-\widehat g_i,
+    \qquad
+    u_g\ge \widehat g_i-g,
+    \\
+    &
+    u_s\ge s-\widehat s_i,
+    \qquad
+    u_s\ge \widehat s_i-s,
+    \\
+    &
+    u_\delta\ge \delta-\widehat\delta_i,
+    \qquad
+    u_\delta\ge \widehat\delta_i-\delta,
+    \\
+    &
+    u_g,u_s,u_\delta\ge0.
+\end{aligned}
+\end{equation}         
+
+On forme le Lagrangien
+\begin{align*}
+    \mathcal{L}=&-gs+\left[(s+\delta)\tau+\delta\right](n-g)-\lambda\left(w_g u_g+w_s u_s+w_\delta u_\delta\right) - \alpha_1(g-u_g-\widehat g_i) - \alpha_2(-g-u_g+\widehat g_i) \\
+    &- \beta_1(s-u_s-\widehat s_i) - \beta_2(-s-u_s+\widehat s_i) - \gamma_1(\delta-u_\delta-\widehat\delta_i) - \gamma_2(-\delta-u_\delta+\widehat\delta_i) - \nu_1(\underline g - g)\\
+    &- \nu_2(g - \overline g) - \tau_1(\underline s - s) - \tau_2(s - \overline s) - \rho_1(\underline\delta - \delta) - \rho_2(\delta-\overline\delta),
+\end{align*}
+
+Les conditions de stationarité de Karush-Kuhn-Tucker s'écrivent
+\begin{align*}
+    &\frac{\partial\mathcal{L}}{\partial g}=0\iff-(1+\tau)(s+\delta) - \alpha_1 + \alpha_2 + \mu_1 - \mu_2 + \nu_1 - \nu_2 = 0,\\
+    &\frac{\partial\mathcal{L}}{\partial s}=0\iff-g+\tau(n-g) - \beta_1 + \beta_2 + \tau_1 - \tau_2 = 0,\\
+    &\frac{\partial\mathcal{L}}{\partial \delta}=0\iff(\tau+1)(n-g) - \gamma_1 + \gamma_2 + \rho_1 - \rho_2 = 0,\\
+    &\frac{\partial\mathcal{L}}{\partial u_g}=0\iff-\lambda w_g + \alpha_1 + \alpha_2 = 0,\\
+    &\frac{\partial\mathcal{L}}{\partial u_s}=0\iff-\lambda w_s + \beta_1 + \beta_2 = 0,\\
+    &\frac{\partial\mathcal{L}}{\partial u_\delta}=0\iff-\lambda w_\delta + \gamma_1 + \gamma_2 = 0.
+\end{align*}
+Les conditions de complémentarité sont
+\begin{align*}
+    &\alpha_1(g-u_g-\widehat g_i)=0,\\
+    &\alpha_2(-g-u_g+\widehat g_i)=0,\\
+    &\beta_1(s-u_s-\widehat s_i)=0,\\
+    &\beta_2(-s-u_s+\widehat s_i)=0,\\
+    &\gamma_1(\delta-u_\delta-\widehat\delta_i)=0,\\
+    &\gamma_2(-\delta-u_\delta+\widehat\delta_i)=0,\\
+    &\nu_1(\underline g - g)=0,\\
+    &\nu_2(g - \overline g)=0,\\
+    &\tau_1(\underline s - s)=0,\\
+    &\tau_2(s - \overline s)=0,\\
+    &\rho_1(\underline\delta - \delta)=0,\\
+    &\rho_2(\delta-\overline\delta)=0.
+\end{align*}
+
+Enfin, les conditions de faisabilité primale et duale sont
+\begin{align*}
+    &g\le n,\\
+    &(g,s,\delta)\in\Xi,\\
+    &u_g\ge g-\widehat g_i,\\       
+    &u_g\ge \widehat g_i-g,\\
+    &u_s\ge s-\widehat s_i,\\
+    &u_s\ge \widehat s_i-s,\\
+    &u_\delta\ge \delta-\widehat\delta_i,\\
+    &u_\delta\ge \widehat\delta_i-\delta,\\
+    &u_g,u_s,u_\delta\ge0,\\
+    &\alpha_1,\alpha_2,\beta_1,\beta_2,\gamma_1,\gamma_2,\nu_1,\nu_2,\tau_1,\tau_2,\rho_1,\rho_2\ge0.
+\end{align*}
+
+Les conditions de stationarité donnent alors 
+\begin{align}
+    \nu_1-\nu_2&=\alpha_1-\alpha_2+(1+\tau)(s+\delta),\\
+    \tau_1-\tau_2&=\beta_1 - \beta_2 + g - \tau(n-g),\\
+    \rho_1-\rho_2&=\gamma_1 - \gamma_2 - (\tau+1)(n-g),\\
+    \alpha_1+\alpha_2&=\lambda w_g,\\
+    \beta_1+\beta_2&=\lambda w_s,\\
+    \gamma_1+\gamma_2&=\lambda w_\delta,
+\end{align}
+et en supposant que $\lambda>0$ et $w_g,w_s,w_\delta>0$, 
+\begin{align}
+    \alpha_1+\alpha_2&>0,\\
+    \beta_1+\beta_2&>0,\\
+    \gamma_1+\gamma_2&>0.
+\end{align}
+En se focalisant sur la première équation obtenue par conditions de stationarité, on peut distinguer trois cas selon la valeur de \(\alpha_1\) et \(\alpha_2\).
+\begin{itemize}
+    \item Si $\alpha_1>0$ et $\alpha_2>0$, c'est-à-dire que les deux contraintes associées sont actives, alors les conditions de complémentarités donnent $g-\widehat g_i=u_g$ et $-g-\widehat g_i=u_g$. En soustrayant ces deux égalités, on trouve $\boxed{g=\widehat g_i}$.
+    \item Si $\alpha_1>0$ et $\alpha_2=0$, alors $g-\widehat g_i=u_g$ et $\widehat g_i > g + u_g \ge g$. 
+    \begin{itemize}
+        \item Si $\nu_1>0$, alors $\boxed{g=\underline g}$.
+        \item Si $\nu_2>0$, alors $g=\overline g$, ce qui est impossible car $g\le \widehat{g}_i$.
+        \item Si $\nu_1=\nu_2=0$, alors $\boxed{g\in(\underline g,\overline g)}$ qui contient $\widehat g_i$.
+        Dans ce cas, les conditions de stationarité donnent $0=\alpha_1 + (1+\tau)(s+\delta)=\lambda w_g - \frac{\partial l}{\partial g}$, d'où $\frac{\partial f}{\partial g} = \frac{\partial l}{\partial g} - \lambda w_g = 0$. 
+        En injectant la condition $\alpha_1=\lambda w_g$ dans l'équation de stationnarité, on obtient $0=\lambda w_g+(1+\tau)(s+\delta)$.
+        Cela nous fournit une relation affine explicite liant le prix spot et le spread d'équilibrage : 
+        \[s=\frac{-\lambda w_g}{1+\tau}-\delta.\]
+    \end{itemize} 
+    \item Si $\alpha_1=0$ et $\alpha_2>0$, alors $\widehat g_i=g+u_g$ et $g > \widehat g_i + u_g \ge \widehat g_i$.
+    \begin{itemize}
+        \item Si $\nu_1>0$, alors $g=\underline g$, ce qui est impossible car $g\ge \widehat{g}_i$.
+        \item Si $\nu_2>0$, alors $\boxed{g=\overline g}$.
+        \item Si $\nu_1=\nu_2=0$, alors $\boxed{g\in(\underline g,\overline g)}$ which contains $\widehat g_i$. 
+        Dans ce cas, les conditions de stationarité donnent $0=\alpha_2 + (1+\tau)(s+\delta)=\lambda w_g - \frac{\partial l}{\partial g}$, d'où $\frac{\partial f}{\partial g} = \frac{\partial l}{\partial g} - \lambda w_g = 0$. 
+        En injectant la condition $\alpha_2=\lambda w_g$ dans l'équation de stationnarité, on obtient $0=\lambda w_g-(1+\tau)(s+\delta)$.
+        Cela nous fournit une relation affine explicite liant le prix spot et le spread d'équilibrage : 
+        \[s=\frac{\lambda w_g}{1+\tau}-\delta.\]
+    \end{itemize} 
+\end{itemize}
+
+On procède de façon analogue avec les autres équations obtenues par les contraintes de stationarité, ce qui fournit des résultats analogues pour le prix spot $s$ et le spread d'équilibrage $\delta$.\\
+
+    The same argument applies to the deficit branch \(g\le n\). 
+    Taking the maximum over the two branches gives the result. 
+\end{proof} 
+
+\subsubsection{Under what conditions can we use strong duality?}
+In our problem, we do not have (without relaxation) that the loss is convex in \(\xi\), which prevents a direct use of the strong duality result for Wasserstein DRO with convex losses~\cite{EsfahaniKuhn2018}.
+However, the loss is continuous and bounded on the compact support \(\XiSet\), and the transportation metric is defined on a compact Polish space. 
+Under these conditions, we can apply the strong duality result for Wasserstein DRO with measurable bounded losses~\cite{GaoKleywegt2022, ZhangYangGao2025}, which yields the dual representation in Proposition~\ref{prop:wasserstein-dual}.
+
+\begin{proposition}[Wasserstein dual representation] \label{prop:wasserstein-dual} Suppose Assumptions~\ref{ass:compact-support}--\ref{ass:transportation-metric} hold. \color{red}[Carefully check this]\color{black} 
+    Then, for every fixed \(n\in[0,1]\), \[ \sup_{\Q\in\cP_\eps} \E_\Q[\ell(n,\xi)] = \inf_{\lambda\ge0} \left\{ \lambda\eps + \frac1N\sum_{i=1}^N \sup_{\xi\in\XiSet} \left[ \ell(n,\xi)-\lambda d_W(\xi,\hxi_i) \right] \right\}. \] 
+    Consequently, the DRO problem admits the epigraphic form 
+    \begin{equation} \label{eq:dro-dual-main} 
+        \begin{aligned} \inf_{n,\lambda,z}\quad & \lambda\eps+\frac1N\sum_{i=1}^N z_i \\ \textnormal{s.t.}\quad & z_i\ge \mathcal V_i(n,\lambda), \qquad i=1,\ldots,N, \\ & n\in[0,1], \qquad \lambda\ge0, 
+        \end{aligned} 
+    \end{equation} where 
+    \begin{equation} \label{eq:sample-separation} \mathcal V_i(n,\lambda) := \sup_{\xi\in\XiSet} \left\{ \ell(n,\xi)-\lambda d_W(\xi,\hxi_i) \right\}. \end{equation} 
+\end{proposition} 
+\begin{proof} For every fixed \(n\), the loss is continuous on the compact set \(\XiSet\), hence bounded and Borel measurable. 
+    The metric space \((\XiSet,d_W)\) is compact, and therefore Polish. 
+    The result follows from the strong duality theorem for Wasserstein distributionally robust optimization with measurable bounded losses~\cite{GaoKleywegt2022, ZhangYangGao2025}. 
+    Since the reference distribution is empirical, the dual expectation reduces to a finite average over the observed samples. 
+\end{proof} 
+
+\color{red}See \cite{GaoKleywegt2022, ZhangYangGao2025} for the general result, precise assumptions and proof.
+\color{black}
+
+\subsubsection{Exact reformulation as a LP}
+\color{red}
+[Instead of current version, maybe only write the separation problem reformulation in previous section and full reformulation in this one]\\
+
+One of the breakpoints is \(g=n\), which depends on the decision variable $\leadsto$ is it still an exact LP? Following remark might be the correct argument for this
+\color{black}
+\begin{remark}
+    The breakpoint candidate \(g=n\) can be excluded by an additional assumption? (grid is either short or long, but never exactly balanced)
+\end{remark}
+
+\begin{remark}
+The exact finite separation can also be used inside a cutting-plane or outer-approximation algorithm: given a candidate pair \((n,\lambda)\), compute \(\mathcal V_i(n,\lambda)\) exactly by \eqref{eq:finite-separation}, add the corresponding violated epigraph inequality, and iterate. 
+\end{remark}
+
+\subsubsection{Critical Wasserstein penalties} 
+\label{subsec:critical-lambda} 
+The dual multiplier \(\lambda\) has a useful interpretation. 
+It is the marginal cost assigned by the decision maker to transporting probability mass away from the empirical samples. Small values of \(\lambda\) allow the adversary to move samples substantially inside the support, leading to robust behavior close to worst-case optimization. 
+Large values of \(\lambda\) strongly penalize transportation, forcing the adversary to remain close to the empirical distribution and recovering behavior close to SAA. 
+For a fixed \(n\), define the empirical and robust values \[ F_{\rm SAA}(n) = \frac1N\sum_{i=1}^N \ell(n,\hxi_i), \qquad F_{\rm RO}(n) = \sup_{\xi\in\XiSet}\ell(n,\xi). \] 
+The Wasserstein DRO value satisfies \[ F_{\eps}(n) = \inf_{\lambda\ge0} \left\{ \lambda\eps + \frac1N\sum_{i=1}^N \mathcal V_i(n,\lambda) \right\}. \] 
+When \(\eps=0\), the optimal value reduces to \(F_{\rm SAA}(n)\). 
+When \(\eps\) is large enough, the transportation budget ceases to be the binding limitation, and the adversarial distribution may concentrate on worst-case support points, producing the robust value \(F_{\rm RO}(n)\). 
+The transition \[ \mathrm{SAA} \longrightarrow \mathrm{DRO} \longrightarrow \mathrm{RO} \] depends jointly on the radius \(\eps\), the support \(\XiSet\), the metric weights \(W\), and the magnitude of the adverse price-generation interactions in \(\ell\). 
+
+\paragraph{SAA $\to$ DRO transition}
+Condiser the Lipschitz constant of the loss with respect to the transportation metric:
+\begin{equation} 
+    \label{eq:lipschitz-threshold} L(n) := \sup_{\xi\neq\xi'\in\XiSet} \frac{|\ell(n,\xi)-\ell(n,\xi')|} {d_W(\xi,\xi')}. 
+\end{equation} 
+We know that for any \(\lambda\ge L(n)\), \color{red}[Insert proof here]\color{black} the transportation penalty dominates the separation problem and prevents adversarial movement, so that \[ \sup_{\xi\in\XiSet} \left\{ \ell(n,\xi)-\lambda d_W(\xi,\hxi_i) \right\} = \ell(n,\hxi_i). \] 
+Thus, for a sufficiently large \(\lambda\), we recover the empirical loss, and the critical penalty \(\lambda=L(n)\) marks the transition from SAA to DRO.
+
+
+\paragraph{DRO $\to$ RO transition}
+Conversely, when \(\lambda\) is small, the transportation penalty is weak and the separation problem moves toward support points that maximize the loss. 
+We recover the robust optimization value.
+\color{red}[How to find this critical $\lambda$? Bissection algorithm?]\color{black}
+
+\section{Results}
+\subsection{Experimental design}
+\subsubsection{Choice of params (cf empirical analysis)}
+\subsubsection{Wasserstein radius automatic calibration}
+\subsubsection{Weight calibration}
+\subsubsection{Out-of-sample evaluation}
+\subsection{Performance metrics}
+\subsubsection{Mean out-of-sample profit}
+\subsubsection{CVaR}
+\subsubsection{Reliability}
+\subsubsection{Conservatism gap}
+\subsubsection{Runtime}
+\subsubsection{Nomination stability}
+\subsection{Positive-prices scenario (synthetic data)}
+\subsubsection{Baseline scenario}
+\subsubsection{Tight support}
+\subsubsection{Wide support}
+\subsubsection{Heavy-tailed imbalance prices}
+\subsubsection{Rescaled uncertainties}
+\subsubsection{Non-box support}
+\subsection{Negative-prices scenario (synthetic data)}
+\subsubsection{Baseline scenario}
+\subsubsection{Tight support}
+\subsubsection{Wide support}
+\subsubsection{Heavy-tailed imbalance prices}
+\subsubsection{Rescaled uncertainties}
+\subsubsection{Non-box support}
+\subsection{Positive-prices scenario (actual data)}
+\subsubsection{Baseline scenario}
+\subsubsection{Tight support}
+\subsubsection{Wide support}
+\subsubsection{Heavy-tailed imbalance prices}
+\subsubsection{Rescaled uncertainties}
+\subsubsection{Non-box support}
+\subsection{Negative-prices scenario (actual data)}
+\subsubsection{Baseline scenario}
+\subsubsection{Tight support}
+\subsubsection{Wide support}
+\subsubsection{Heavy-tailed imbalance prices}
+\subsubsection{Rescaled uncertainties}
+\subsubsection{Non-box support}
+\subsection{Discussion}
+\subsubsection{Synthetic vs actual data}
+\subsubsection{Exact vs approx}
+\subsubsection{Box vs non-box}
+\subsubsection{Impact of negative prices}
+\subsubsection{Impact of extreme events}
+\subsubsection{Impact of scaling}
+\subsubsection{Limitations}
+\subsubsection{Future work}
+
+
+\begin{thebibliography}{9}
+
+\bibitem{EsfahaniKuhn2018}
+P. M. Esfahani and D. Kuhn. 2018.
+Data-driven distributionally robust optimization using the Wasserstein metric: performance guarantees and tractable reformulations.
+\emph{Mathematical Programming}.
+
+\bibitem{HomemDeMello}
+C. A. Gamboa, D. M. Valladao, A. Street, and T. Homem-de-Mello. 2021. Decomposition methods for Wasserstein-based data-driven distributionally robust problems
+\emph{Operations Research Letters}.
+
+\bibitem{AolariteiBangouraBolognaniLanzettiDorfler2025} 
+Aolaritei, L., Bangoura, B., Bolognani, S., Lanzetti, N., and Dörfler, F. (2025). 
+\textit{Hedging against Black Swans in Day-Ahead Energy Markets}.
+
+\bibitem{GaoKleywegt2022} 
+Gao, Rui and Kleywegt, Anton J. (2022). 
+\textit{Distributionally Robust Stochastic Optimization with Wasserstein Distance}.
+
+\bibitem{ZhangYangGao2025} 
+Zhang, Luhao and Yang, Jincheng and Gao, Rui (2025). 
+\textit{A Short and General Duality Proof for Wasserstein Distributionally Robust Optimization}.
+\end{thebibliography}
+
+
+\end{document}
