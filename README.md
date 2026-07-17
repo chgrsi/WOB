@@ -23,3 +23,23 @@ By default, plots are saved as PDF at plots/one_run.
 
 Depending on your prior as a decision-maker, you can change the level of robustness via the epsilon parameter as well as the modelization for the uncertainties. 
 This can be done directly in ```experiments_one_run.jl```, for instance by uncommenting another modelization.
+
+### Run the experiments for a grid of epsilons 
+
+Once ready, you can run the code for a grid of epsilons, making the run time a bit longer. 
+Here, we also run the simulation several times so as to get smoother plots and flatten variance. 
+
+Same as before,
+```
+# Run experiments for several epsilons
+julia experiments_full_run.jl
+```
+By default, outputs are saved as CSV at results/full_run. 
+
+You can then compile the results into PDF plots, using the following command line.
+```
+# Make plots
+julia make_plots_full_run.jl
+```
+By default, plots are saved as PDF at plots/full_run.
+
