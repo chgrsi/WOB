@@ -4,32 +4,22 @@ WOB is a Julia-based optimization framework for day-ahead energy market bidding.
 
 ### Run the code
 
-To run the experiments and generate OOS metrics, you can either run all training sizes (3, 30, 300) or target a specific one (e.g., 30).
+To run the experiments and generate out-of-sample results, you can use the following command line.
 
 ```
-# Run all (3, 30, 300)
-julia run_experiments.jl
-
-# Run specific sample size
-julia run_experiments.jl 30
+# Run experiments for a given epsilon
+julia experiments_one_run.jl
 ```
-By default, outputs are saved as CSV to results/raw/. 
+By default, outputs are saved as CSV at results/one_run. 
 
 You can then compile the results into PDF plots, using the following command line.
 ```
 # Make plots
-julia make_plots.jl
+julia make_plots_one_run.jl
 ```
-By default, plots are saved at plots/raw/.
+By default, plots are saved as PDF at plots/one_run.
 
-### Sensitivity analysis
+### Play with the parameters
 
-Modify the CONFIG in run_experiments.jl to test specific hypotheses, e.g.,
-- high variance: ```sig1 = 100.0, sig2 = 200.0```
-- fat tails: ```w1 = 0.8, w2 = 0.2```
-- wide bounds: ```s_max = 2000.0, d_min = -5000.0, d_max = 5000.0```
-- tight bounds: ```s_max = 200.0, d_min = -200.0, d_max = 200.0```
-- asymmetric scaling: ```W_mult = (g = 10.0, s = 1.0, d = 1.0)```
-- uniform scaling (cheaper penalty): ```W_mult = (g = 0.1, s = 0.1, d = 0.1)```
-
-Be careful to change the output directory name as well!
+Depending on your prior as a decision-maker, you can change the level of robustness via the epsilon parameter as well as the modelization for the uncertainties. 
+This can be done directly in ```experiments_one_run.jl```, for instance by uncommenting another modelization.
