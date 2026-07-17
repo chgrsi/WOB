@@ -2,7 +2,7 @@
 
 WOB is a Julia-based optimization framework for day-ahead energy market bidding. It implements a data-driven Wasserstein DRO model to find the optimal energy nomination $n^*$ from the side of a Balance Responsible Party (BRP). By hedging against the uncertainty of renewable generation and the dual-pricing imbalance penalties, WOB seeks to limit extreme losses.
 
-### Run the code
+### Run the code (synthetic data)
 
 To run the experiments and generate out-of-sample results, you can use the following command line.
 
@@ -42,4 +42,14 @@ You can then compile the results into PDF plots, using the following command lin
 julia make_plots_full_run.jl
 ```
 By default, plots are saved as PDF at plots/full_run.
+
+### Run the code (real data)
+
+To run the experiments on real-world data, you can use the following command lines.
+```
+# Run experiments for a given epsilon 
+julia run_real.jl
+# Make plots
+julia plot_real.jl
+```
 
