@@ -13,7 +13,7 @@ const K_VAL = 1.2
 const TAU_VAL = (K_VAL - 1.0) / (K_VAL + 1.0)
 const EPSILON = 10.0
 const TRAIN_OBS = 30
-const ALLOW_NEGATIVE_PRICES = false
+const ALLOW_NEGATIVE_PRICES = true
 
 # set uncertainty bounds (s_min, s_max, d_min, d_max) 
 function support_bounds(s_tr, d_tr)
@@ -144,8 +144,8 @@ function scaling_weights(g_tr, s_tr, d_tr)
         1 / max(std(g_tr), 1e-6),
         1 / max(std(s_tr), 1e-6),
         1 / max(std(d_tr), 1e-6),
-        1 / max(std(g_tr .* s_tr), 1e-6),
-        1 / max(std(g_tr .* d_tr), 1e-6),
+        0.0,
+        0.0,
     ]
 end
 
@@ -204,7 +204,7 @@ function solve_dro_exact(g_tr, s_tr, d_tr, s_min, s_max, d_min, d_max, W)
             cp = (s_k + d_k) * TAU_VAL - d_k
             cm = (s_k + d_k) * TAU_VAL + d_k
             @constraint(m, epi[i] >= -g_k*s_k + cp*(g_k - n) - lam*dist)
-            @constraint(m, epi[i] >= -g_k*s_k + cm*(n  - g_k) - lam*dist)
+            @constraint(m, epi[i] >= -g_k*s_k + cm*(n - g_k) - lam*dist)
         end
     end
     @objective(m, Min, lam*EPSILON + sum(epi)/N)
