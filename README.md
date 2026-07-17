@@ -29,7 +29,7 @@ This can be done directly in ```experiments_one_run.jl```, for instance by uncom
 ### Run the experiments for a grid of epsilons 
 
 Once ready, you can run the code for a grid of epsilons, making the run time a bit longer. 
-Here, we also run the simulation several times so as to get smoother plots and flatten variance. 
+Here, we also run the simulation several times so as to get smoother plots and flatten the variance. 
 
 Same as before,
 ```
